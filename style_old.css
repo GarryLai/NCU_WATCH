@@ -1,0 +1,217 @@
+:root {
+    --primary-color: #2c3e50;
+    --accent-color: #3498db;
+    --bg-color: #f5f6fa;
+    --border-color: #dcdde1;
+    --header-height: 80px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: #333;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+/* Header */
+header {
+    height: var(--header-height);
+    flex-shrink: 0; /* Prevent header from shrinking */
+    background-color: white;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    z-index: 100;
+}
+
+h1 {
+    font-size: 1.2rem;
+    color: var(--primary-color);
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+select {
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--primary-color);
+    font-size: 1rem;
+}
+
+/* Main Layout */
+main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    padding: 10px;
+}
+
+.data-panel {
+    flex: 3; /* 60% width */
+    border-right: 1px solid var(--border-color);
+    overflow: hidden; /* Prevent body scroll, handle in table-container */
+    background: white;
+    display: flex;
+    flex-direction: column;
+}
+
+.map-panel {
+    flex: 2; /* 40% width */
+    position: relative;
+    background: #eee;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+}
+
+/* Table Styles */
+.table-container {
+    width: 100%;
+    flex: 1; /* Adaptive height */
+    overflow: auto; /* Scrollbar here */
+    padding: 0; /* Remove padding to ensure sticking to edges if needed, or keep minimal */
+    min-height: 0; /* Critical for flex child scroll */
+}
+
+table {
+    border-collapse: separate; 
+    border-spacing: 0;
+    width: 100%;
+    height: 100%; /* Make table fill the container height */
+    font-size: 0.9rem;
+}
+
+th {
+    position: sticky;
+    top: 0;
+    background-color: #f1f1f1;
+    z-index: 10;
+     /* Ensure header has a border even when sticky */
+    box-shadow: 0 1px 0 #eee;
+    height: 40px; /* Keep header fixed height usually looks better */
+}
+
+th, td {
+    border: 1px solid #eee;
+    padding: 8px;
+    text-align: center;
+    min-width: 100px;
+    /* Removed fixed height to allow auto-scaling */
+}
+
+th {
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+th.location-col {
+    position: sticky;
+    left: 0;
+    z-index: 20; /* Higher than top headers */
+    background-color: white;
+    min-width: 100px;
+    border-right: 2px solid #ddd;
+}
+
+td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    background-color: white;
+    font-weight: bold;
+    border-right: 2px solid #ddd;
+}
+
+th:hover {
+    background-color: #e9ecef;
+}
+
+th.active-time {
+    background-color: var(--primary-color);
+    color: white;
+    border-bottom: 3px solid var(--accent-color);
+}
+
+/* Data Cell Formatting */
+.cell-value {
+    color: #333;
+    font-weight: 500;
+}
+
+/* Legend */
+.legend {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+    font-size: 0.8rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.color-box {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    border: 1px solid #ccc;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    main {
+        flex-direction: column;
+    }
+    
+    .data-panel, .map-panel {
+        flex: 1;
+        width: 100%;
+    }
+}
+/* Add specific style for map labels */
+.leaflet-tooltip.map-label {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    font-weight: bold;
+    color: #000;
+    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+    font-size: 1rem;
+}
