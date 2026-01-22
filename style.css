@@ -102,6 +102,23 @@ main {
     height: 100%;
 }
 
+/* Map time display - bottom left corner */
+.map-time-display {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 400;
+    background-color: rgba(255, 255, 255, 0.95);
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    white-space: pre-line;
+    line-height: 1.6;
+}
+
 /* ==========================================================================
    3. Controls & Inputs
    ========================================================================== */
@@ -165,28 +182,50 @@ table {
 
 th, td {
     padding: var(--cell-padding);
-    border: 1px solid var(--border-light);
+    border: 2px solid #ffffff;
     text-align: center;
     min-width: var(--cell-min-width);
     vertical-align: middle;
 }
 
 /* --- Sticky Header (Top) --- */
-th {
+thead tr:first-child th {
     position: sticky;
     top: 0;
+    height: 40px;
+    z-index: 11;
+}
+
+thead tr:nth-child(2) th {
+    position: sticky;
+    top: 40px;
     height: 45px;
+    z-index: 11;
+}
+
+th {
     background-color: #f8f9fa;
     font-weight: 600;
+    font-size: 1.35rem;
     color: var(--primary-color);
-    z-index: 10;
-    box-shadow: 0 1px 0 var(--border-color); /* Bottom border for sticky header */
+    box-shadow: 0 1px 0 var(--border-color);
     cursor: pointer;
     transition: background-color 0.2s;
 }
 
+/* Date header styling */
+th.date-header {
+    background-color: #e3f2fd;
+    font-size: 1.2rem;
+    cursor: default;
+}
+
 th:hover {
     background-color: #e9ecef;
+}
+
+th.date-header:hover {
+    background-color: #e3f2fd;
 }
 
 th.active-time {
@@ -195,12 +234,13 @@ th.active-time {
     border-bottom: 3px solid var(--accent-color);
 }
 
-/* --- Sticky Column (Left: Date/Location) --- */
-/* The first cell in header row (Location/Time label) */
+/* --- Sticky Column (Left: Location) --- */
 th.location-col {
-    position: sticky;
-    left: 0;
-    z-index: 20; /* Higher z-index to stay on top of other headers */
+    position: sticky !important;
+    left: 0 !important;
+    top: 0 !important;
+    height: 85px !important; /* 40px + 45px for rowspan=2 */
+    z-index: 20 !important;
     background-color: var(--panel-bg);
     border-right: 2px solid var(--border-color);
 }
@@ -212,11 +252,17 @@ td:first-child {
     z-index: 5; /* Stays above regular cells but below header */
     background-color: var(--panel-bg);
     font-weight: 600;
+    font-size: 1.35rem;
     color: var(--primary-color);
     border-right: 2px solid var(--border-color);
 }
 
 /* Data Cells */
+td:not(:first-child) {
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
 .cell-value {
     color: var(--text-main);
 }
@@ -225,18 +271,30 @@ td:first-child {
    5. Leaflet Map Overrides
    ========================================================================== */
 .leaflet-tooltip.map-label {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #000;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
     /* Text stroke effect for better visibility */
     text-shadow: 
-        -1px -1px 0 #fff,  
-         1px -1px 0 #fff,
-        -1px  1px 0 #fff,
-         1px  1px 0 #fff;
+        -2px -2px 2px #fff,  
+         2px -2px 2px #fff,
+        -2px  2px 2px #fff,
+         2px  2px 2px #fff !important;
+}
+
+.leaflet-tooltip.map-label div {
+    font-size: 1.5rem !important;
+    line-height: 1.4 !important;
+}
+
+.leaflet-tooltip.map-label b {
+    font-size: 1.5rem !important;
 }
 
 /* ==========================================================================

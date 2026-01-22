@@ -5,7 +5,7 @@ const CONFIG = {
     API_URL: "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-D0047-005.json",
     GEOJSON_URL: "twtown2010.3.json",
     MAP: {
-        CENTER: [24.89, 121.23],
+        CENTER: [24.85, 121.23],
         ZOOM: 11
     }
 };
@@ -33,28 +33,57 @@ const UNIT_MAPPING = {
     "蒲福風級": "級"
 };
 
+// 定義3小時時段（從中午12點開始）
+// 注意: 每個時段包含3個整點小時，例如12-15包含12, 13, 14點
+const TIME_PERIODS = [
+    { start: 12, end: 15, label: '12-15', hours: [12, 13, 14] },
+    { start: 15, end: 18, label: '15-18', hours: [15, 16, 17] },
+    { start: 18, end: 21, label: '18-21', hours: [18, 19, 20] },
+    { start: 21, end: 24, label: '21-00', hours: [21, 22, 23] },
+    { start: 0, end: 3, label: '00-03', hours: [0, 1, 2] },
+    { start: 3, end: 6, label: '03-06', hours: [3, 4, 5] },
+    { start: 6, end: 9, label: '06-09', hours: [6, 7, 8] },
+    { start: 9, end: 12, label: '09-12', hours: [9, 10, 11] }
+];
+
+// 定義6小時時段（今日12-18、18-00、隔日00-06、06-12）
+const TIME_PERIODS_6HOURS = [
+    { start: 12, end: 18, label: '12-18', hours: [12, 13, 14, 15, 16, 17], isToday: true },
+    { start: 18, end: 24, label: '18-00', hours: [18, 19, 20, 21, 22, 23], isCrossDay: true },
+    { start: 0, end: 6, label: '00-06', hours: [0, 1, 2, 3, 4, 5], isNextDay: true },
+    { start: 6, end: 12, label: '06-12', hours: [6, 7, 8, 9, 10, 11], isNextDay: true }
+];
+
 const VARIABLE_MAPPING = {
     "溫度": { 
-        key: "溫度", 
+        key: "溫度",
+        dataInterval: 1,  // 每小時一筆
         colors: ['#117388','#207E92','#2E899C','#3D93A6','#4C9EB0','#5BA9BA','#69B4C4','#78BFCE','#87CAD8','#96D4E2','#A4DFEC','#B3EAF6','#0C924B','#1D9A51','#2FA257','#40A95E','#51B164','#62B96A','#74C170','#85C876','#96D07C','#A7D883','#B9E089','#CAE78F','#DBEF95','#F4F4C3','#F7E78A','#F4D576','#F1C362','#EEB14E','#EA9E3A','#E78C26','#E07B03','#ED5138','#ED1759','#AD053A','#780101','#9C68AD','#845194','#8520A0'],
         thresholds: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]]
     }, 
     "降雨機率": { 
-        key: "3小時降雨機率", 
-        colors: ['#2446a9', '#2d59a0', '#396b94', '#497b85', '#60927b', '#7bae74', '#99cc6d', '#c4ea67', '#ffff66', '#FFCB00', '#FF9A00'],
-        thresholds: [[1, 2, 5, 8, 15, 20, 25, 30, 35, 40]]
+        key: "3小時降雨機率",
+        dataInterval: 3,  // 月3小時一筆
+        colors: ['#FFFFFF', '#E0F2F7', '#B3D9E8', '#7FB3D5', '#4A90C2', '#2E5C8A', '#FF9500', '#FF6B35', '#E63946', '#A4161A', '#5C0A0A'],
+        // thresholds: [[1, 2, 5, 8, 15, 20, 25, 30, 35, 40]]
+        thresholds: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]]
     }, 
     "相對濕度": { 
-        key: "相對濕度",  
+        key: "相對濕度",
+        dataInterval: 1,  // 每小時一筆
         colors: ["#D3E6EB", "#A7CFD8","#82F550","#4ADC0C","#93F4FF","#2DEAFF","#02D4E3"],
         thresholds: [[65,70,75,80,85,90]]
     }, 
     "風速": { 
-        key: "風速", 
-        colors: ['#FFFFFF', '#E7FFFF', '#D5FFEB', '#C7F4E0', '#FFFEA5', '#F2DB79', '#E6B167', '#EA83ED', '#B940BD', '#6942AE', '#272F6E'],
+        key: "風速",
+        dataInterval: 3,  // 月3小時一筆
+        colors: ['#FFFFFF', '#b0fff2', '#80f9be', '#50fcaf', '#FFFEA5', 
+            '#F2DB79', '#E6B167', '#EA83ED', '#B940BD', '#6942AE', '#272F6E'],
         thresholds: [
-            [5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7, 41.5],
-            [4, 5, 6, 7, 8, 9, 10, 11, 12, 14]
+            // [5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7, 41.5],
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            // [4, 5, 6, 7, 8, 9, 10, 11, 12, 14]
+            [2, 4, 6, 8, 10, 12, 14, 15, 16, 17]
         ]
     }
 };
@@ -74,7 +103,9 @@ const AppState = {
     currentVariable: null,
     currentSubVariable: null,
     selectedTimeIndex: 0,
-    isSixHourAggregation: true,
+    aggregationMode: '3hours',  // '3hours', '6hours', 或 'none'（不合併）
+    timePeriods: [],  // 儲存時段分組資訊
+    currentDisplayItems: [],  // 儲存當前顯示的時間項目（用於時間標籤顯示）
 
     // Map instances
     map: null,
@@ -85,6 +116,251 @@ const AppState = {
 // 2. Utility Functions (Business Logic)
 // -----------------------------------------------------------------------------
 const Utils = {
+    /**
+     * 根據時間找到對應的時段
+     * @param {Date} date - 時間物件
+     * @returns {Object|null} - 時段物件或null
+     */
+    getTimePeriod(date) {
+        const hour = date.getHours();
+        return TIME_PERIODS.find(p => {
+            if (p.start < p.end) {
+                return hour >= p.start && hour < p.end;
+            } else {
+                // 跨日時段（如21-00）
+                return hour >= p.start || hour < p.end;
+            }
+        });
+    },
+
+    /**
+     * 將時間序列按時段分組
+     * @param {Array} timeArray - 時間陣列
+     * @param {Number} dataInterval - 資料間隔（小時），1=每小時, 3=月3小時
+     * @returns {Array} - 時段分組陣列
+     */
+    groupTimesByPeriod(timeArray, dataInterval = 1) {
+        const periodGroups = [];
+        const processedDates = new Set();
+        
+        timeArray.forEach((timeStr, idx) => {
+            const date = new Date(timeStr);
+            const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+            const period = this.getTimePeriod(date);
+            
+            if (period) {
+                const groupKey = `${dateKey}-${period.label}`;
+                if (!processedDates.has(groupKey)) {
+                    processedDates.add(groupKey);
+                    
+                    // 根據資料間隔找出該時段內的所有時間索引
+                    const indices = [];
+                    
+                    if (dataInterval === 1) {
+                        // 逐時資料：找出時段內的所有3個小時 (12, 13, 14)
+                        for (let i = 0; i < timeArray.length; i++) {
+                            const checkDate = new Date(timeArray[i]);
+                            const checkDateKey = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+                            const checkPeriod = this.getTimePeriod(checkDate);
+                            
+                            if (checkDateKey === dateKey && checkPeriod && checkPeriod.label === period.label) {
+                                indices.push(i);
+                            }
+                        }
+                    } else if (dataInterval === 3) {
+                        // 3小時資料：只需要找到該時段的起始時間點 (12:00)
+                        for (let i = 0; i < timeArray.length; i++) {
+                            const checkDate = new Date(timeArray[i]);
+                            const checkHour = checkDate.getHours();
+                            const checkDateKey = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+                            
+                            // 檢查是否為該時段的起始時間
+                            if (checkDateKey === dateKey && checkHour === period.start) {
+                                indices.push(i);
+                                break;  // 3小時資料只有一筆
+                            }
+                        }
+                    }
+                    
+                    if (indices.length > 0) {
+                        // 所有時段都包含日期資訊（格式：YYYY/MM/DD）
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const displayLabel = `${year}/${month}/${day}\n${period.label}`;
+                        
+                        // Debug: 輸出時段資訊
+                        const debugTimes = indices.map(i => {
+                            const d = new Date(timeArray[i]);
+                            return `${d.getHours()}:00`;
+                        });
+                        console.log(`[Interval=${dataInterval}h] Period ${period.label}: indices=${indices}, times=[${debugTimes.join(', ')}]`);
+                        
+                        periodGroups.push({
+                            period: period,
+                            dateKey: dateKey,
+                            indices: indices,
+                            displayLabel: displayLabel,
+                            timestamp: date.getTime()  // 添加時間戳記方便排序和過濾
+                        });
+                    }
+                }
+            }
+        });
+        
+        return periodGroups;
+    },
+
+    /**
+     * 將時間序列按6小時時段分組
+     * @param {Array} timeArray - 時間陣列
+     * @param {Number} dataInterval - 資料間隔（小時），1=每小時, 3=月3小時
+     * @returns {Array} - 6小時時段分組陣列
+     */
+    groupTimesByPeriod6Hours(timeArray, dataInterval = 1) {
+        const periodGroups = [];
+        const processedDates = new Set();
+        
+        timeArray.forEach((timeStr, idx) => {
+            const date = new Date(timeStr);
+            const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+            const hour = date.getHours();
+            
+            // 確定6小時時段
+            let period = null;
+            let effectiveDate = date;
+            
+            if (hour >= 12 && hour < 18) {
+                period = TIME_PERIODS_6HOURS[0]; // 12-18
+            } else if (hour >= 18) {
+                period = TIME_PERIODS_6HOURS[1]; // 18-00（跨日）
+            } else if (hour < 6) {
+                period = TIME_PERIODS_6HOURS[2]; // 00-06（隔日）
+                // 對於00-06時段，應該使用前一天的日期作為groupKey
+                effectiveDate = new Date(date);
+                effectiveDate.setDate(effectiveDate.getDate() - 1);
+            } else if (hour >= 6 && hour < 12) {
+                period = TIME_PERIODS_6HOURS[3]; // 06-12（隔日）
+                // 對於06-12時段，應該使用前一天的日期作為groupKey
+                effectiveDate = new Date(date);
+                effectiveDate.setDate(effectiveDate.getDate() - 1);
+            }
+            
+            if (period) {
+                const effectiveDateKey = `${effectiveDate.getFullYear()}-${effectiveDate.getMonth()}-${effectiveDate.getDate()}`;
+                const groupKey = `${effectiveDateKey}-${period.label}`;
+                
+                if (!processedDates.has(groupKey)) {
+                    processedDates.add(groupKey);
+                    
+                    // 找出該時段內的所有時間索引
+                    const indices = [];
+                    
+                    if (dataInterval === 1) {
+                        // 逐時資料：找出時段內的所有6個小時
+                        for (let i = 0; i < timeArray.length; i++) {
+                            const checkDate = new Date(timeArray[i]);
+                            const checkHour = checkDate.getHours();
+                            const checkDateKey = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+                            
+                            let matchPeriod = null;
+                            let checkEffectiveDate = checkDate;
+                            
+                            if (checkHour >= 12 && checkHour < 18) {
+                                matchPeriod = TIME_PERIODS_6HOURS[0];
+                            } else if (checkHour >= 18) {
+                                matchPeriod = TIME_PERIODS_6HOURS[1];
+                            } else if (checkHour < 6) {
+                                matchPeriod = TIME_PERIODS_6HOURS[2];
+                                checkEffectiveDate = new Date(checkDate);
+                                checkEffectiveDate.setDate(checkEffectiveDate.getDate() - 1);
+                            } else if (checkHour >= 6 && checkHour < 12) {
+                                matchPeriod = TIME_PERIODS_6HOURS[3];
+                                checkEffectiveDate = new Date(checkDate);
+                                checkEffectiveDate.setDate(checkEffectiveDate.getDate() - 1);
+                            }
+                            
+                            const checkEffectiveDateKey = `${checkEffectiveDate.getFullYear()}-${checkEffectiveDate.getMonth()}-${checkEffectiveDate.getDate()}`;
+                            
+                            if (checkEffectiveDateKey === effectiveDateKey && matchPeriod && matchPeriod.label === period.label) {
+                                indices.push(i);
+                            }
+                        }
+                    } else if (dataInterval === 3) {
+                        // 3小時資料：找該時段的起始時間點
+                        for (let i = 0; i < timeArray.length; i++) {
+                            const checkDate = new Date(timeArray[i]);
+                            const checkHour = checkDate.getHours();
+                            const checkDateKey = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
+                            
+                            let checkEffectiveDate = checkDate;
+                            
+                            if (checkHour < 6) {
+                                checkEffectiveDate = new Date(checkDate);
+                                checkEffectiveDate.setDate(checkEffectiveDate.getDate() - 1);
+                            } else if (checkHour >= 6 && checkHour < 12) {
+                                checkEffectiveDate = new Date(checkDate);
+                                checkEffectiveDate.setDate(checkEffectiveDate.getDate() - 1);
+                            }
+                            
+                            const checkEffectiveDateKey = `${checkEffectiveDate.getFullYear()}-${checkEffectiveDate.getMonth()}-${checkEffectiveDate.getDate()}`;
+                            
+                            // 檢查是否為該時段的起始時間
+                            if (checkEffectiveDateKey === effectiveDateKey && checkHour === period.start) {
+                                indices.push(i);
+                                break;  // 3小時資料只有一筆
+                            }
+                        }
+                    }
+                    
+                    if (indices.length > 0) {
+                        // 所有時段都包含日期資訊（格式：YYYY/MM/DD）
+                        const year = effectiveDate.getFullYear();
+                        const month = String(effectiveDate.getMonth() + 1).padStart(2, '0');
+                        const day = String(effectiveDate.getDate()).padStart(2, '0');
+                        const displayLabel = `${year}/${month}/${day}\n${period.label}`;
+                        
+                        periodGroups.push({
+                            period: period,
+                            dateKey: effectiveDateKey,
+                            indices: indices,
+                            displayLabel: displayLabel,
+                            timestamp: effectiveDate.getTime()
+                        });
+                    }
+                }
+            }
+        });
+        
+        return periodGroups;
+    },
+
+    /**
+     * 過濾出今天中午12點到明天中午12點的時段
+     * @param {Array} periodGroups - 所有時段分組
+     * @returns {Array} - 過濾後的時段分組
+     */
+    filterTodayPeriods(periodGroups) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        // 今天中午12點
+        const todayNoon = new Date(today);
+        todayNoon.setHours(12, 0, 0, 0);
+        
+        // 明天中午12點
+        const tomorrowNoon = new Date(today);
+        tomorrowNoon.setDate(tomorrowNoon.getDate() + 1);
+        tomorrowNoon.setHours(12, 0, 0, 0);
+        
+        // 過濾出在時間範圍內的時段
+        return periodGroups.filter(pg => {
+            const pgDate = new Date(pg.timestamp);
+            // 時段的開始時間要 >= 今天中午 且 < 明天中午
+            return pgDate >= todayNoon && pgDate < tomorrowNoon;
+        });
+    },
+
     /**
      * Parse raw string value to number, handling "<= 1".
      * @returns {Object} { num: Number|NaN, str: String, hasData: Boolean }
@@ -116,19 +392,22 @@ const Utils = {
     },
 
     /**
-     * Get aggregate value (max) for 6-hour window, or single value.
+     * Get aggregate value (max) for time period or single value.
+     * @param {Object} weatherElement - 天氣元素資料
+     * @param {Array|Number} timeIndices - 時間索引陣列（時段模式）或單一索引
+     * @param {String} subVarKey - 子變量鍵值
      */
-    getDisplayData(weatherElement, timeStartIndex, isAggregated, subVarKey) {
-        const count = isAggregated ? 6 : 1;
-        
+    getDisplayData(weatherElement, timeIndices, subVarKey) {
         let maxVal = -Infinity;
         let displayStr = "N/A";
         let foundData = false;
 
-        // Loop through time range
-        for (let k = 0; k < count; k++) {
-            const idx = timeStartIndex + k;
-            if (idx >= weatherElement.Time.length) break;
+        // 支援單一索引或索引陣列
+        const indices = Array.isArray(timeIndices) ? timeIndices : [timeIndices];
+
+        // Loop through time indices
+        for (const idx of indices) {
+            if (idx >= weatherElement.Time.length) continue;
 
             const t = weatherElement.Time[idx];
             if (!t || !t.ElementValue) continue;
@@ -329,6 +608,15 @@ const UI = {
                 const HH = d.getHours().toString().padStart(2, '0');
                 return `${mm}/${dd} ${HH}:00`;
             });
+            
+            // 生成時段分組資訊（預設使用1小時間隔，即溫度資料）
+            const rawTimes = targetEl.Time.map(t => t.StartTime || t.DataTime);
+            const allPeriods = Utils.groupTimesByPeriod(rawTimes, 1);
+            
+            // 僅保留今天中午到明天中午的時段
+            AppState.timePeriods = Utils.filterTodayPeriods(allPeriods);
+            
+            console.log('Filtered Periods (Today Noon to Tomorrow Noon):', AppState.timePeriods);
         }
     },
 
@@ -409,8 +697,8 @@ const UI = {
             this.updateView();
         });
 
-        document.getElementById('six-hour-toggle').addEventListener('change', (e) => {
-            AppState.isSixHourAggregation = e.target.checked;
+        document.getElementById('aggregation-mode-select').addEventListener('change', (e) => {
+            AppState.aggregationMode = e.target.value;
             AppState.selectedTimeIndex = 0;
             this.updateView();
         });
@@ -419,6 +707,12 @@ const UI = {
     updateView() {
         this.renderTable();
         this.renderMap();
+        
+        // Initialize time display after rendering table
+        if (AppState.currentDisplayItems.length > 0 && AppState.selectedTimeIndex < AppState.currentDisplayItems.length) {
+            const item = AppState.currentDisplayItems[AppState.selectedTimeIndex];
+            this.updateTimeDisplay(item.label);
+        }
     },
 
     renderTable() {
@@ -430,43 +724,125 @@ const UI = {
 
         // 1. Build Headers
         thead.innerHTML = '';
-        const thLoc = document.createElement('th');
-        thLoc.textContent = "地區 / 時間";
-        thLoc.classList.add('location-col');
-        thead.appendChild(thLoc);
-
-        // Determine indices to display
-        let displayIndices = [];
-        if (AppState.isSixHourAggregation) {
-            for(let i=0; i < AppState.timeLabels.length; i+=6) displayIndices.push(i);
-        } else {
-            displayIndices = AppState.timeLabels.map((_, i) => i);
-        }
-
-        displayIndices.forEach((realIdx, viewIdx) => {
-            const th = document.createElement('th');
-            let label = AppState.timeLabels[realIdx];
+        
+        // Determine what to display: periods or individual times
+        let displayItems = [];
+        if (AppState.aggregationMode !== 'none' && AppState.timePeriods.length > 0) {
+            // 根據聚合模式和當前變量的資料間隔生成時段分組
+            const dataInterval = varConfig.dataInterval || 1;
             
-            // Format for aggregation?
-            if (AppState.isSixHourAggregation) {
-                const endIdx = Math.min(realIdx + 5, AppState.timeLabels.length - 1);
-                if (endIdx > realIdx) {
-                     const startT = label.split(' ')[1];
-                     const endT = AppState.timeLabels[endIdx].split(' ')[1];
-                     label = `${label.split(' ')[0]}\n${startT}~${endT}`;
+            // 找到當前變量的資料
+            const firstLoc = AppState.locationsList[0];
+            const weatherEl = firstLoc.data.find(el => el.ElementName === varConfig.key);
+            
+            if (weatherEl && weatherEl.Time) {
+                const rawTimes = weatherEl.Time.map(t => t.StartTime || t.DataTime);
+                
+                if (AppState.aggregationMode === '3hours') {
+                    // 3小時模式
+                    const allPeriods = Utils.groupTimesByPeriod(rawTimes, dataInterval);
+                    const filteredPeriods = Utils.filterTodayPeriods(allPeriods);
+                    
+                    displayItems = filteredPeriods.map(pg => ({
+                        type: 'period',
+                        indices: pg.indices,
+                        label: pg.displayLabel,
+                        timestamp: pg.timestamp
+                    }));
+                } else if (AppState.aggregationMode === '6hours') {
+                    // 6小時模式
+                    const allPeriods6h = Utils.groupTimesByPeriod6Hours(rawTimes, dataInterval);
+                    const filteredPeriods6h = Utils.filterTodayPeriods(allPeriods6h);
+                    
+                    displayItems = filteredPeriods6h.map(pg => ({
+                        type: 'period',
+                        indices: pg.indices,
+                        label: pg.displayLabel,
+                        timestamp: pg.timestamp
+                    }));
                 }
             }
+        } else {
+            // 使用單一時間點模式
+            displayItems = AppState.timeLabels.map((label, i) => ({
+                type: 'single',
+                indices: [i],
+                label: label
+            }));
+        }
 
-            th.textContent = label;
-            th.style.whiteSpace = "pre-line";
-            th.onclick = () => this.selectTime(viewIdx);
+        // 保存當前顯示項目到 AppState（用於 selectTime 顯示時間標籤）
+        AppState.currentDisplayItems = displayItems;
 
-            if (viewIdx === AppState.selectedTimeIndex) {
-                th.classList.add('active-time');
-                this.updateTimeDisplay(label.replace('\n', ' '));
+        // 時段模式：建立兩行表頭（日期行 + 時間行）
+        if (AppState.aggregationMode !== 'none' && displayItems.length > 0) {
+            // 第一行：日期行
+            const dateRow = document.createElement('tr');
+            const thLocDate = document.createElement('th');
+            thLocDate.textContent = "地區";
+            thLocDate.classList.add('location-col');
+            thLocDate.rowSpan = 2;
+            dateRow.appendChild(thLocDate);
+
+            // 根據聚合模式決定每天的時段數
+            const periodsPerDay = AppState.aggregationMode === '3hours' ? 4 : 2;
+            const numDays = Math.ceil(displayItems.length / periodsPerDay);
+            
+            for (let i = 0; i < numDays; i++) {
+                const dayItems = displayItems.slice(i * periodsPerDay, (i + 1) * periodsPerDay);
+                if (dayItems.length > 0) {
+                    const date = new Date(dayItems[0].timestamp);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const dateStr = `${year}/${month}/${day}`;
+                    
+                    const thDate = document.createElement('th');
+                    thDate.textContent = dateStr;
+                    thDate.colSpan = dayItems.length;
+                    thDate.classList.add('date-header');
+                    dateRow.appendChild(thDate);
+                }
             }
-            thead.appendChild(th);
-        });
+            thead.appendChild(dateRow);
+
+            // 第二行：時間行
+            const timeRow = document.createElement('tr');
+            displayItems.forEach((item, viewIdx) => {
+                const th = document.createElement('th');
+                // 只顯示時段標籤（不含日期）
+                const timeLabel = item.label.split('\n').pop();
+                th.textContent = timeLabel;
+                th.classList.add('time-header');
+                th.onclick = () => this.selectTime(viewIdx);
+
+                if (viewIdx === AppState.selectedTimeIndex) {
+                    th.classList.add('active-time');
+                }
+                timeRow.appendChild(th);
+            });
+            thead.appendChild(timeRow);
+        } else {
+            // 單一時間點模式：保持原有單行表頭
+            const row = document.createElement('tr');
+            const thLoc = document.createElement('th');
+            thLoc.textContent = "地區 / 時間";
+            thLoc.classList.add('location-col');
+            row.appendChild(thLoc);
+
+            displayItems.forEach((item, viewIdx) => {
+                const th = document.createElement('th');
+                th.textContent = item.label;
+                th.style.whiteSpace = "pre-line";
+                th.onclick = () => this.selectTime(viewIdx);
+
+                if (viewIdx === AppState.selectedTimeIndex) {
+                    th.classList.add('active-time');
+                }
+                row.appendChild(th);
+            });
+            thead.appendChild(row);
+        }
 
         // 2. Build Rows
         tbody.innerHTML = '';
@@ -480,17 +856,16 @@ const UI = {
             // Find weather element
             const el = loc.data.find(e => e.ElementName === varConfig.key);
 
-            displayIndices.forEach(realIdx => {
+            displayItems.forEach(item => {
                 const td = document.createElement('td');
                 let color = '#cccccc';
                 let text = "N/A";
 
                 if (el) {
-                    // Logic extracted to Utils
+                    // 使用新的 getDisplayData，傳入索引陣列
                     const result = Utils.getDisplayData(
                         el, 
-                        realIdx, 
-                        AppState.isSixHourAggregation, 
+                        item.indices, 
                         AppState.currentSubVariable
                     );
 
@@ -514,15 +889,43 @@ const UI = {
         const varConfig = VARIABLE_MAPPING[AppState.currentVariable];
         if (!varConfig) return;
 
-        // Determine time start index
-        let realStartIndex = AppState.selectedTimeIndex;
-        if (AppState.isSixHourAggregation) {
-            realStartIndex = AppState.selectedTimeIndex * 6;
+        // 確定要使用的時間索引
+        let timeIndices;
+        if (AppState.aggregationMode !== 'none' && AppState.timePeriods.length > 0) {
+            // 動態生成當前變量的時段分組（與表格邏輯一致）
+            const dataInterval = varConfig.dataInterval || 1;
+            const firstLoc = AppState.locationsList[0];
+            const weatherEl = firstLoc.data.find(el => el.ElementName === varConfig.key);
+            
+            if (weatherEl && weatherEl.Time) {
+                const rawTimes = weatherEl.Time.map(t => t.StartTime || t.DataTime);
+                
+                let filteredPeriods;
+                if (AppState.aggregationMode === '3hours') {
+                    const allPeriods = Utils.groupTimesByPeriod(rawTimes, dataInterval);
+                    filteredPeriods = Utils.filterTodayPeriods(allPeriods);
+                } else if (AppState.aggregationMode === '6hours') {
+                    const allPeriods6h = Utils.groupTimesByPeriod6Hours(rawTimes, dataInterval);
+                    filteredPeriods = Utils.filterTodayPeriods(allPeriods6h);
+                }
+                
+                console.log(`[Map] Variable: ${AppState.currentVariable}, Interval: ${dataInterval}h, Mode: ${AppState.aggregationMode}, Periods:`, filteredPeriods);
+                
+                if (AppState.selectedTimeIndex < filteredPeriods.length) {
+                    timeIndices = filteredPeriods[AppState.selectedTimeIndex].indices;
+                } else {
+                    timeIndices = filteredPeriods[0]?.indices || [0];
+                }
+            } else {
+                timeIndices = [0];
+            }
+        } else {
+            // 單一時間點模式
+            timeIndices = [AppState.selectedTimeIndex];
         }
 
         AppState.geoJsonLayer.eachLayer(layer => {
-            let name = layer.feature.properties.town;
-            if (NAME_MAPPING[name]) name = NAME_MAPPING[name];
+            const name = layer.feature.properties.town;
 
             // O(1) Lookup
             const locData = AppState.locationsMap.get(name);
@@ -535,8 +938,7 @@ const UI = {
                 if (el) {
                     const result = Utils.getDisplayData(
                         el, 
-                        realStartIndex, 
-                        AppState.isSixHourAggregation, 
+                        timeIndices, 
                         AppState.currentSubVariable
                     );
                     
@@ -566,30 +968,59 @@ const UI = {
             layer.bindTooltip(tooltipContent, {
                 permanent: true,
                 direction: "center",
-                className: "map-label"
+                className: "map-label",
+                offset: [0, 0]
             });
         });
     },
 
     selectTime(viewIndex) {
         AppState.selectedTimeIndex = viewIndex;
-        // Update header UI only (Optimization: don't re-render whole table)
-        const headers = document.querySelectorAll('#table-header th');
-        headers.forEach((th, i) => {
-            if (i === 0) return;
-            if (i - 1 === viewIndex) {
-                th.classList.add('active-time');
-                this.updateTimeDisplay(th.textContent.replace(/\n/g, ' '));
-            } else {
-                th.classList.remove('active-time');
-            }
-        });
+        
+        // Get the time label to display from currentDisplayItems
+        if (viewIndex < AppState.currentDisplayItems.length) {
+            const item = AppState.currentDisplayItems[viewIndex];
+            this.updateTimeDisplay(item.label);
+        }
+        
+        // Update header UI - select only time headers
+        const timeHeaders = document.querySelectorAll('#table-header th.time-header');
+        if (timeHeaders.length > 0) {
+            // 兩行表頭模式
+            timeHeaders.forEach((th, i) => {
+                if (i === viewIndex) {
+                    th.classList.add('active-time');
+                } else {
+                    th.classList.remove('active-time');
+                }
+            });
+        } else {
+            // 單行表頭模式
+            const headers = document.querySelectorAll('#table-header th');
+            headers.forEach((th, i) => {
+                if (i === 0) return; // Skip location column
+                if (i - 1 === viewIndex) {
+                    th.classList.add('active-time');
+                } else {
+                    th.classList.remove('active-time');
+                }
+            });
+        }
         
         this.renderMap();
     },
 
     updateTimeDisplay(str) {
         document.getElementById('current-time-display').textContent = `目前顯示時間：${str}`;
+        // 同時更新地圖上的時間顯示，格式化為「所選日期」和「小時區間」
+        let mapDisplayText = str;
+        if (str.includes('\n')) {
+            const parts = str.split('\n');
+            const dateStr = parts[0];
+            const timeStr = parts[1];
+            mapDisplayText = `所選日期：${dateStr}\n小時區間：${timeStr} 時`;
+        }
+        document.getElementById('map-time-display').textContent = mapDisplayText;
     }
 };
 
