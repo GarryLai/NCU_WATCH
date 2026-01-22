@@ -528,7 +528,25 @@ const App = {
     },
 
     initMap() {
-        this.ui.map = L.map('map', { center: CONFIG.MAP.CENTER, zoom: CONFIG.MAP.ZOOM });
+        // HTML2Canvas Compatibility Fixes:
+        // 1. Force CPU rendering (any3d = false) to use top/left positioning.
+        // 2. Disable animations to prevent transform artifacts.
+        // 3. Use Canvas renderer (preferCanvas: true) for better image capture stability than SVG.
+        if (L.Browser) {
+            L.Browser.any3d = false;
+        }
+
+        this.ui.map = L.map('map', { 
+            center: CONFIG.MAP.CENTER, 
+            zoom: CONFIG.MAP.ZOOM,
+            minZoom: CONFIG.MAP.ZOOM,
+            maxZoom: CONFIG.MAP.ZOOM,
+            zoomControl: false,
+            preferCanvas: true,
+            zoomAnimation: false,
+            fadeAnimation: false,
+            markerZoomAnimation: false
+        });
         
         fetch(CONFIG.GEOJSON_URL)
             .then(r => r.json())
@@ -646,6 +664,35 @@ const App = {
             this.state.aggMode = e.target.value;
             this.state.timeIndex = 0; 
             this.updateData();
+        });
+
+        document.getElementById('download-btn').addEventListener('click', () => {
+            const mainElement = document.querySelector('main');
+            if (!mainElement) return;
+
+            if (typeof html2canvas === 'undefined') {
+                alert('圖片下載模組尚未載入，請確認網路連線');
+                return;
+            }
+
+            // Small delay to ensure any map rendering is stable
+            setTimeout(() => {
+                html2canvas(mainElement, {
+                    useCORS: true, 
+                    backgroundColor: '#ffffff',
+                    scrollX: 0,
+                    scrollY: 0,
+                    scale: 1 // Ensure 1:1 scale to avoid high-DPI scaling artifacts
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `NCU_Watcher_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                }).catch(e => {
+                    console.error(e);
+                    alert('擷取圖片失敗');
+                });
+            }, 100);
         });
     },
 
