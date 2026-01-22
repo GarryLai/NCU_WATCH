@@ -500,7 +500,7 @@ const App = {
         currentSubVar: null,
         aggMode: CONFIG.AGGREGATION.HOURS_3, 
         currentDisplayItems: [],
-        timeIndex: 0
+        timeIndex: -1
     },
     
     ui: {
@@ -651,6 +651,7 @@ const App = {
                 this.state.aggMode = document.getElementById('aggregation-mode-select').value;
             }
 
+            this.state.timeIndex = -1;
             this.updateSubMenu();
             this.updateData();
         });
@@ -662,7 +663,7 @@ const App = {
 
         document.getElementById('aggregation-mode-select').addEventListener('change', e => {
             this.state.aggMode = e.target.value;
-            this.state.timeIndex = 0; 
+            this.state.timeIndex = -1; 
             this.updateData();
         });
 
@@ -833,7 +834,6 @@ const App = {
         if (!this.ui.layer || !this.state.locations.length) return;
         
         const config = VARIABLE_MAPPING[this.state.currentVar];
-        const activeItem = this.state.currentDisplayItems[this.state.timeIndex];
         const unit = Utils.getUnit(this.state.currentVar, this.state.currentSubVar, this.state.meta);
 
         this.ui.layer.eachLayer(layer => {
@@ -843,12 +843,43 @@ const App = {
             let color = '#cccccc';
             let label = 'N/A';
 
-            if (loc && activeItem && loc.data[config.key]) {
-                const { num, str, valid } = Utils.calculateAggregatedValue(
-                    loc.data[config.key], 
-                    activeItem.indices, 
-                    this.state.currentSubVar
-                );
+            if (loc && loc.data[config.key]) {
+                let num, str, valid = false;
+
+                if (this.state.timeIndex === -1 && this.state.currentDisplayItems.length > 0) {
+                     // Max Mode
+                     let maxVal = -Infinity;
+                     let maxStr = 'N/A';
+                     this.state.currentDisplayItems.forEach(item => {
+                         const res = Utils.calculateAggregatedValue(
+                             loc.data[config.key], 
+                             item.indices, 
+                             this.state.currentSubVar
+                         );
+                         if (res.valid && res.num > maxVal) {
+                             maxVal = res.num;
+                             maxStr = res.str;
+                             valid = true;
+                         }
+                     });
+                     if (valid) {
+                         num = maxVal;
+                         str = maxStr;
+                     }
+                } else {
+                    // Specific Time Mode
+                    const activeItem = this.state.currentDisplayItems[this.state.timeIndex];
+                    if (activeItem) {
+                        const res = Utils.calculateAggregatedValue(
+                            loc.data[config.key], 
+                            activeItem.indices, 
+                            this.state.currentSubVar
+                        );
+                        num = res.num;
+                        str = res.str;
+                        valid = res.valid;
+                    }
+                }
                 
                 if (valid) {
                     color = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar);
@@ -864,7 +895,12 @@ const App = {
     },
 
     selectTime(idx) {
-        this.state.timeIndex = idx;
+        // Toggle Feature: If clicking the currently active column, unselect it (return to Max Mode)
+        if (this.state.timeIndex === idx) {
+            this.state.timeIndex = -1;
+        } else {
+            this.state.timeIndex = idx;
+        }
         
         // Update Table Headers
         // Strategy: find all terminal 'th' elements that represent time columns
@@ -875,14 +911,14 @@ const App = {
         if (this.state.aggMode !== CONFIG.AGGREGATION.NONE) {
              const timeRow = this.ui.tableHeader.lastElementChild;
              Array.from(timeRow.children).forEach((th, i) => {
-                 if (i === idx) th.classList.add('active-time');
+                 if (i === this.state.timeIndex) th.classList.add('active-time');
                  else th.classList.remove('active-time');
              });
         } else {
             const row = this.ui.tableHeader.firstElementChild;
              Array.from(row.children).forEach((th, i) => {
                  if (i === 0) return; // Skip location
-                 if (i - 1 === idx) th.classList.add('active-time');
+                 if (i - 1 === this.state.timeIndex) th.classList.add('active-time');
                  else th.classList.remove('active-time');
              });
         }
@@ -892,6 +928,12 @@ const App = {
     },
 
     updateLabels() {
+        if (this.state.timeIndex === -1) {
+            this.ui.timeDisplay.textContent = "目前顯示時間：全時段最大值";
+            this.ui.mapTimeDisplay.textContent = "全時段最大值";
+            return;
+        }
+
         const item = this.state.currentDisplayItems[this.state.timeIndex];
         if (!item) return;
 
