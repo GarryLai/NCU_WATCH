@@ -1,0 +1,23 @@
+name: Deploy to Lab Server
+
+on:
+  push:
+    branches:
+      - ncu-web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Deploy to Server via rsync
+        uses: Burnett01/rsync-deployments@7.0.0
+        with:
+          switches: -avzr --delete
+          path: ./
+          remote_path: /var/www/html/web/NCU_Watch
+          remote_host: ${{ secrets.SERVER_IP }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          args: -e "ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey"
