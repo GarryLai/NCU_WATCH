@@ -757,6 +757,7 @@ const App = {
                     spanCount = 1;
                     dateTh = document.createElement('th');
                     dateTh.className = 'date-header';
+                    if (idx > 0) dateTh.classList.add('day-start');
                     dateTh.textContent = currentDate;
                     dateTh.colSpan = 1;
                     row1.appendChild(dateTh);
@@ -779,6 +780,10 @@ const App = {
 
                 th.className = 'time-header'; 
                 if (idx === this.state.timeIndex) th.classList.add('active-time');
+                // Add day boundary styling
+                if (idx > 0 && item.dateKey !== items[idx-1].dateKey) {
+                    th.classList.add('day-start'); 
+                }
                 th.onclick = () => this.selectTime(idx);
                 row2.appendChild(th);
             });
@@ -813,9 +818,14 @@ const App = {
 
             const element = loc.data[config.key];
             
-            items.forEach(item => {
+            items.forEach((item, idx) => {
                 const td = document.createElement('td');
                 
+                // Add day boundary styling
+                if (idx > 0 && item.dateKey !== items[idx-1].dateKey) {
+                    td.classList.add('day-start');
+                }
+
                 const { num, str, valid } = Utils.calculateAggregatedValue(
                     element, 
                     item.indices, 
