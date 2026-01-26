@@ -167,61 +167,57 @@ label {
 }
 
 /* ==========================================================================
-   4. Table Styles (Fixed Header & Columns)
+   4. Table Styles (Responsive Full Screen)
    ========================================================================== */
 .table-container {
     flex: 1;
     width: 100%;
-    overflow: auto; /* Enable scrolling */
-    min-height: 0; /* Important for flex items */
+    overflow: hidden; /* Disable scrolling */
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 table {
     width: 100%;
-    height: 100%;
-    border-collapse: separate; /* Required for sticky headers */
+    height: 100%; /* Fill container */
+    border-collapse: separate; 
     border-spacing: 0;
-    font-size: 0.9rem;
+    table-layout: fixed; /* Equal/Fixed layout for auto-sizing */
 }
 
 th, td {
-    padding: var(--cell-padding);
-    border: 2px solid #ffffff;
+    padding: 0;
+    border: 1px solid #ffffff;
     text-align: center;
-    min-width: var(--cell-min-width);
     vertical-align: middle;
+    /* Auto font size based on viewport */
+    font-size: min(1.2vw, 2.0vh);
+    overflow: hidden; /* Hide overflow content if any */
+    white-space: nowrap;
 }
 
-/* --- Sticky Header (Top) --- */
-thead tr:first-child th {
-    position: sticky;
-    top: 0;
-    height: 40px;
-    z-index: 11;
-}
-
-thead tr:nth-child(2) th {
-    position: sticky;
-    top: 40px;
-    height: 45px;
-    z-index: 11;
-}
-
+/* Headers */
 th {
     background-color: #f8f9fa;
     font-weight: 600;
-    font-size: 1.5rem;
     color: var(--primary-color);
-    box-shadow: 0 1px 0 var(--border-color);
     cursor: pointer;
     transition: background-color 0.2s;
+    height: auto; /* Remove fixed height */
 }
 
 /* Date header styling */
 th.date-header {
     background-color: #e3f2fd;
-    font-size: 1.35rem;
+    font-size: min(1.0vw, 1.8vh);
     cursor: default;
+}
+
+/* Time header styling (Row 2) */
+thead tr:nth-child(2) th {
+    font-size: min(2.4vw, 4.2vh); /* Larger font for time */
+    height: 8vh; /* Force taller height for time row */
 }
 
 th:hover {
@@ -238,33 +234,28 @@ th.active-time {
     border-bottom: 3px solid var(--accent-color);
 }
 
-/* --- Sticky Column (Left: Location) --- */
+/* Location Header (Top Left corner) */
 th.location-col {
-    position: sticky !important;
-    left: 0 !important;
-    top: 0 !important;
-    height: 85px !important; /* 40px + 45px for rowspan=2 */
-    z-index: 20 !important;
     background-color: var(--panel-bg);
     border-right: 2px solid var(--border-color);
+    height: auto;
 }
 
 /* The first cell in body rows (Location names) */
 td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 5; /* Stays above regular cells but below header */
     background-color: var(--panel-bg);
     font-weight: 600;
-    font-size: 1.5rem;
+    font-size: min(1.4vw, 2.5vh);
     color: var(--primary-color);
     border-right: 2px solid var(--border-color);
 }
 
 /* Data Cells */
 td:not(:first-child) {
-    font-size: 2rem;
-    font-weight: 600;
+    font-size: min(2.8vw, 5.0vh); /* Maximize value font size */
+    font-weight: 500;
+    line-height: 0.9;
+    letter-spacing: -0.02em;
 }
 
 .cell-value {
