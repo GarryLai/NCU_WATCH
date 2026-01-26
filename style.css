@@ -210,7 +210,8 @@ th {
 /* Date header styling */
 th.date-header {
     background-color: #e3f2fd;
-    font-size: min(1.0vw, 1.8vh);
+    font-size: min(1.8vw, 3vh);
+    height: 6vh;
     cursor: default;
 }
 
@@ -260,6 +261,11 @@ td:not(:first-child) {
 
 .cell-value {
     color: var(--text-main);
+}
+
+/* Day Boundary Marker */
+th.day-start, td.day-start {
+    border-left: 3px solid var(--primary-color) !important;
 }
 
 /* ==========================================================================
