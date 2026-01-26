@@ -767,7 +767,16 @@ const App = {
 
                 // Time Header
                 const th = document.createElement('th');
-                th.textContent = item.periodLabel || item.label.split(' ')[1]; 
+                const timeText = item.periodLabel || item.label.split(' ')[1];
+
+                // Format time: split start and end to custom size (e.g. "12-15" -> "12" large, "-15" small)
+                const match = timeText.match(/^(\d{1,2})(-.*)$/);
+                if (match) {
+                     th.innerHTML = `<span class="time-start">${match[1]}</span><span class="time-end">${match[2]}</span>`;
+                } else {
+                     th.textContent = timeText;
+                }
+
                 th.className = 'time-header'; 
                 if (idx === this.state.timeIndex) th.classList.add('active-time');
                 th.onclick = () => this.selectTime(idx);

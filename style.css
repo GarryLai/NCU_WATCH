@@ -216,8 +216,23 @@ th.date-header {
 
 /* Time header styling (Row 2) */
 thead tr:nth-child(2) th {
-    font-size: min(2.4vw, 4.2vh); /* Larger font for time */
-    height: 8vh; /* Force taller height for time row */
+    font-size: min(1.5vw, 2.5vh); /* Base font size */
+    height: 8vh;
+    vertical-align: middle;
+}
+
+.time-start {
+    font-size: 1.8em; /* Much larger start time */
+    font-weight: 800;
+    line-height: 1;
+}
+
+.time-end {
+    font-size: 1.0em; /* Normal size end time */
+    font-weight: 600;
+    vertical-align: 0.2em; /* Superscript-like lift */
+    margin-left: 2px;
+    opacity: 0.9;
 }
 
 th:hover {
