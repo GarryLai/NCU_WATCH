@@ -804,7 +804,7 @@ const App = {
             const tr = document.createElement('tr');
             
             const tdName = document.createElement('td');
-            tdName.textContent = loc.name;
+            tdName.textContent = loc.name.replace('區', '');
             tr.appendChild(tdName);
 
             const element = loc.data[config.key];

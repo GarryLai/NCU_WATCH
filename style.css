@@ -205,6 +205,7 @@ th {
     cursor: pointer;
     transition: background-color 0.2s;
     height: auto; /* Remove fixed height */
+    font-size: min(1.8vw, 3vh);
 }
 
 /* Date header styling */
