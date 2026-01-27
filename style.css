@@ -211,14 +211,14 @@ th {
 /* Date header styling */
 th.date-header {
     background-color: #e3f2fd;
-    font-size: min(1.8vw, 3vh);
+    font-size: min(2.4vw, 3.6vh);
     height: 6vh;
     cursor: default;
 }
 
 /* Time header styling (Row 2) */
 thead tr:nth-child(2) th {
-    font-size: min(2.4vw, 4.2vh); /* Larger font for time */
+    font-size: min(2.4vw, 3.6vh); /* Larger font for time */
     height: 8vh; /* Force taller height for time row */
 }
 
@@ -247,14 +247,14 @@ th.location-col {
 td:first-child {
     background-color: var(--panel-bg);
     font-weight: 600;
-    font-size: min(1.4vw, 2.5vh);
+    font-size: min(1.8vw, 3vh);
     color: var(--primary-color);
     border-right: 2px solid var(--border-color);
 }
 
 /* Data Cells */
 td:not(:first-child) {
-    font-size: min(2.8vw, 5.0vh); /* Maximize value font size */
+    font-size: min(2.4vw, 4.0vh); /* Maximize value font size */
     font-weight: 500;
     line-height: 0.9;
     letter-spacing: -0.02em;

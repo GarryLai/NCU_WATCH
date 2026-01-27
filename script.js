@@ -87,10 +87,10 @@ const Utils = {
     },
 
     calculateAggregatedValue(element, indices, subKey) {
-        if (!element || !indices || indices.length === 0) return { num: 0, str: "N/A", valid: false };
+        if (!element || !indices || indices.length === 0) return { num: 0, str: "-", valid: false };
 
         let maxVal = -Infinity;
-        let maxStr = "N/A";
+        let maxStr = "-";
         let found = false;
 
         for (const idx of indices) {
@@ -115,7 +115,7 @@ const Utils = {
             }
         }
 
-        return { num: found ? maxVal : 0, str: found ? maxStr : "N/A", valid: found };
+        return { num: found ? maxVal : 0, str: found ? maxStr : "-", valid: found };
     },
 
     getColor(val, varKey, subVarKey) {
@@ -804,7 +804,8 @@ const App = {
             const tr = document.createElement('tr');
             
             const tdName = document.createElement('td');
-            tdName.textContent = loc.name.replace('區', '');
+            let shortName = loc.name.replace('區', '');
+            tdName.textContent = shortName[0] + '　' + shortName[1];
             tr.appendChild(tdName);
 
             const element = loc.data[config.key];
