@@ -9,30 +9,53 @@
     <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <div id="loading-text">載入中...</div>
+        <button id="cancel-op-btn">取消</button>
+    </div>
+
     <div class="container">
         <header>
-            <h1>桃園市未來天氣預報監測</h1>
-            <div style="color: red; font-size: 20px;">資料來源：中央氣象署 【整合測試平台，僅供參考】</div>
-            <div class="controls">
-                <label for="variable-select">選擇監測項目：</label>
-                <select id="variable-select">
-                    <!-- Options will be populated by JS -->
-                </select>
-                <select id="sub-variable-select" style="display:none; margin-left: 5px;">
-                    <!-- Options for sub-variables (e.g. WindSpeed vs BeaufortScale) -->
-                </select>
-                <label style="margin-left: 10px;">
-                    <span>時段合併模式：</span>
-                    <select id="aggregation-mode-select">
-                        <option value="none">不合併</option>
-                        <option value="3hours" selected>單日3小時合併</option>
-                        <option value="6hours">單日6小時合併</option>
-                    </select>
-                </label>
-                <button id="download-btn" style="margin-left: 10px; cursor: pointer;">下載圖片</button>
-                <span id="current-time-display">目前顯示時間：請點擊表格時間軸</span>
+            <div class="top-warning">資料來源：中央氣象署 【整合測試平台，僅供參考】</div>
+            <div class="header-main">
+                <h1>桃園市未來天氣預報監測</h1>
+                <button id="download-btn" class="icon-btn" aria-label="下載圖片" title="下載圖片">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                </button>
             </div>
         </header>
+
+        <div class="sidebar-container">
+            <div id="sidebar-trigger">
+                <div class="trigger-hint">▼</div>
+            </div>
+
+            <aside id="sidebar">
+                <div class="sidebar-header">控制面板</div>
+                <div class="sidebar-content">
+                    <div class="control-item">
+                        <label for="variable-select">監測項目</label>
+                        <select id="variable-select"></select>
+                    </div>
+                    <div class="control-item">
+                        <select id="sub-variable-select" style="display:none; min-width: 150px;"></select>
+                    </div>
+                    <div class="control-item">
+                        <label for="aggregation-mode-select">時段合併</label>
+                        <select id="aggregation-mode-select" style="min-width: 150px;">
+                            <option value="none">不合併</option>
+                            <option value="3hours" selected>單日3小時合併</option>
+                            <option value="6hours">單日6小時合併</option>
+                        </select>
+                    </div>
+                </div>
+            </aside>
+        </div>
         
         <main>
             <div class="data-panel">

@@ -52,21 +52,55 @@ body {
 /* Header */
 header {
     flex-shrink: 0;
-    height: var(--header-height);
-    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
     background-color: var(--panel-bg);
     border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    z-index: 100;
+}
+
+.top-warning {
+    background-color: #fff3cd;
+    color: #cf0505;
+    text-align: center;
+    font-size: 0.9rem;
+    padding: 4px;
+    border-bottom: 1px solid #ffeeba;
+    font-weight: bold;
+}
+
+.header-main {
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    z-index: 100;
+    padding: 0 20px;
 }
 
 h1 {
     font-size: 1.25rem;
     font-weight: 700;
     color: var(--primary-color);
+}
+
+/* Icon Button */
+.icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    color: var(--primary-color);
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-btn:hover {
+    background-color: #f0f0f0;
+    color: var(--accent-color);
 }
 
 /* Main Content Area */
@@ -120,18 +154,161 @@ main {
 }
 
 /* ==========================================================================
-   3. Controls & Inputs
+   3. Sidebar & Controls
    ========================================================================== */
-.controls {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+/* Sidebar Container to Handle Hover State (Fixes Jitter) */
+.sidebar-container {
+    position: relative;
+    width: 100%;
+    z-index: 90; /* High enough but below header */
 }
 
-.control-group {
+/* Trigger Area */
+#sidebar-trigger {
+    position: relative;
+    width: 100%;
+    height: 20px;
+    z-index: 10; /* Above sidebar panel */
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #e9ecef;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#sidebar-trigger:hover {
+    background-color: #dde1e6;
+}
+
+/* Hint Text */
+.trigger-hint {
+    color: var(--text-light);
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+/* Use container hover to keep active */
+.sidebar-container:hover .trigger-hint {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+/* Sidebar Panel */
+#sidebar {
+    position: absolute;
+    top: 20px; /* Attach exactly below trigger */
+    left: 0;
+    width: 100%;
+    background-color: #ffffff; /* Solid white background */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 5; /* Below trigger */
+    
+    transform: translateY(-120%); /* Hidden by default (slides up behind header) */
+    transition: transform 0.3s ease;
+    transition-delay: 0.2s; /* Delay closing to prevent jitter */
+    
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+    border-bottom: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-light);
+}
+
+/* Active State via Container Hover */
+.sidebar-container:hover #sidebar,
+#sidebar.active {
+    transform: translateY(0);
+    transition-delay: 0s; /* Open immediately */
+}
+
+/* Ensure header is on top */
+header {
+    z-index: 100;
+    position: relative;
+    background-color: var(--panel-bg);
+}
+
+/* Header Config */
+.sidebar-header {
+    display: none;
+}
+
+/* Content Layout */
+.sidebar-content {
+    padding: 15px 20px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.control-item {
+    margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.control-item label {
+    margin-bottom: 0;
+    white-space: nowrap;
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+/* Loading Overlay */
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    backdrop-filter: blur(2px);
+}
+
+#loading-overlay.hidden {
+    display: none;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-top: 5px solid #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+#loading-text {
+    font-size: 1.2rem;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+}
+
+#cancel-op-btn {
+    padding: 8px 16px;
+    background-color: rgba(255,255,255,0.2);
+    border: 1px solid white;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#cancel-op-btn:hover {
+    background-color: rgba(255,255,255,0.4);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 select {

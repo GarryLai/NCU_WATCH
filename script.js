@@ -500,16 +500,23 @@ const App = {
         currentSubVar: null,
         aggMode: CONFIG.AGGREGATION.HOURS_3, 
         currentDisplayItems: [],
-        timeIndex: -1
+        timeIndex: -1,
+        loading: {
+            active: false,
+            controller: null
+        }
     },
     
     ui: {
         map: null,
         layer: null,
-        tableHeader: document.getElementById('table-header'),
-        tableBody: document.getElementById('table-body'),
-        timeDisplay: document.getElementById('current-time-display'),
-        mapTimeDisplay: document.getElementById('map-time-display')
+        tableHeader: null,
+        tableBody: null,
+        mapTimeDisplay: null,
+        loadingOverlay: null,
+        loadingText: null,
+        cancelBtn: null,
+        downloadBtn: null
     },
 
     init() {
@@ -520,12 +527,31 @@ const App = {
     },
 
     cacheDOM() {
-        // Elements already cached in `ui` roughly, but good practice to ensure they exist
         this.ui.tableHeader = document.getElementById('table-header');
         this.ui.tableBody = document.getElementById('table-body');
-        this.ui.timeDisplay = document.getElementById('current-time-display');
         this.ui.mapTimeDisplay = document.getElementById('map-time-display');
+        
+        this.ui.loadingOverlay = document.getElementById('loading-overlay');
+        this.ui.loadingText = document.getElementById('loading-text');
+        this.ui.cancelBtn = document.getElementById('cancel-op-btn');
+        this.ui.downloadBtn = document.getElementById('download-btn');
     },
+
+    showLoading(msg = "載入中...") {
+        this.state.loading.active = true;
+        this.ui.loadingText.textContent = msg;
+        this.ui.loadingOverlay.classList.remove('hidden');
+        
+        this.state.loading.controller = new AbortController();
+        return this.state.loading.controller.signal;
+    },
+
+    hideLoading() {
+        this.state.loading.active = false;
+        this.ui.loadingOverlay.classList.add('hidden');
+        this.state.loading.controller = null;
+    },
+
 
     initMap() {
         // HTML2Canvas Compatibility Fixes:
@@ -572,8 +598,10 @@ const App = {
     },
 
     async fetchData() {
+        const signal = this.showLoading("取得氣象資料中...");
+        
         try {
-            const res = await fetch(CONFIG.API_URL);
+            const res = await fetch(CONFIG.API_URL, { signal });
             const data = await res.json();
             
             const rawLocs = data.cwaopendata.Dataset.Locations.Location;
@@ -592,8 +620,14 @@ const App = {
             this.initMenu();
             
         } catch (e) {
-            console.error("Data Load Error", e);
-            alert("氣象資料載入失敗");
+            if (e.name === 'AbortError') {
+                console.log("Fetch Aborted");
+            } else {
+                console.error("Data Load Error", e);
+                alert("氣象資料載入失敗");
+            }
+        } finally {
+            this.hideLoading();
         }
     },
 
@@ -634,26 +668,45 @@ const App = {
     },
 
     bindEvents() {
-        document.getElementById('variable-select').addEventListener('change', async e => {
-            this.state.currentVar = e.target.value;
-            
-            if (this.state.currentVar === "定量降水預報") {
-                document.getElementById('aggregation-mode-select').disabled = true;
-                this.state.aggMode = 'QPF';
-                
-                // Initialize QPF data if needed
-                if (!this.state.locations[0].data["QPF"]) {
-                     this.ui.timeDisplay.textContent = "正在解析雨量圖...";
-                     await QPFService.process();
-                }
-            } else {
-                document.getElementById('aggregation-mode-select').disabled = false;
-                this.state.aggMode = document.getElementById('aggregation-mode-select').value;
-            }
+        // Cancel Operation
+        this.ui.cancelBtn.addEventListener('click', () => {
+             if (this.state.loading.controller) {
+                 this.state.loading.controller.abort();
+                 this.hideLoading();
+             }
+        });
 
-            this.state.timeIndex = -1;
-            this.updateSubMenu();
-            this.updateData();
+        document.getElementById('variable-select').addEventListener('change', async e => {
+            const signal = this.showLoading("資料處理中...");
+            try {
+                await new Promise(r => setTimeout(r, 10)); // Allow UI update
+
+                this.state.currentVar = e.target.value;
+                
+                if (this.state.currentVar === "定量降水預報") {
+                    document.getElementById('aggregation-mode-select').disabled = true;
+                    this.state.aggMode = 'QPF';
+                    
+                    // Initialize QPF data if needed
+                    if (!this.state.locations[0].data["QPF"]) {
+                         this.ui.loadingText.textContent = "正在解析雨量圖(可能需要幾秒)...";
+                         await QPFService.process();
+                    }
+                } else {
+                    document.getElementById('aggregation-mode-select').disabled = false;
+                    this.state.aggMode = document.getElementById('aggregation-mode-select').value;
+                }
+
+                if (signal.aborted) return;
+
+                this.state.timeIndex = -1;
+                this.updateSubMenu();
+                this.updateData();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                this.hideLoading();
+            }
         });
 
         document.getElementById('sub-variable-select').addEventListener('change', e => {
@@ -667,33 +720,48 @@ const App = {
             this.updateData();
         });
 
-        document.getElementById('download-btn').addEventListener('click', () => {
-            const mainElement = document.querySelector('main');
-            if (!mainElement) return;
-
+        this.ui.downloadBtn.addEventListener('click', async () => {
             if (typeof html2canvas === 'undefined') {
                 alert('圖片下載模組尚未載入，請確認網路連線');
                 return;
             }
 
-            // Small delay to ensure any map rendering is stable
-            setTimeout(() => {
-                html2canvas(mainElement, {
+            const signal = this.showLoading("正在產生圖片...");
+            const btn = this.ui.downloadBtn;
+            const originalHTML = btn.innerHTML;
+            
+            // Change icon to spinner (mini)
+            btn.innerHTML = '<div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0;"></div>';
+            btn.disabled = true;
+
+            try {
+                // Yield to allow UI rendering
+                await new Promise(r => setTimeout(r, 100));
+
+                const target = document.querySelector('main'); 
+                
+                const canvas = await html2canvas(target, {
                     useCORS: true, 
-                    backgroundColor: '#ffffff',
+                    backgroundColor: '#f5f6fa',
                     scrollX: 0,
                     scrollY: 0,
-                    scale: 1 // Ensure 1:1 scale to avoid high-DPI scaling artifacts
-                }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = `NCU_Watcher_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                }).catch(e => {
-                    console.error(e);
-                    alert('擷取圖片失敗');
+                    scale: 1 
                 });
-            }, 100);
+
+                if (signal.aborted) return;
+
+                const link = document.createElement('a');
+                link.download = `NCU_Watcher_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (e) {
+                console.error(e);
+                alert('擷取圖片失敗');
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+                this.hideLoading();
+            }
         });
     },
 
@@ -929,8 +997,7 @@ const App = {
 
     updateLabels() {
         if (this.state.timeIndex === -1) {
-            this.ui.timeDisplay.textContent = "目前顯示時間：全時段最大值";
-            this.ui.mapTimeDisplay.textContent = "全時段最大值";
+            if (this.ui.mapTimeDisplay) this.ui.mapTimeDisplay.textContent = "全時段最大值";
             return;
         }
 
@@ -938,7 +1005,6 @@ const App = {
         if (!item) return;
 
         const text = item.label;
-        this.ui.timeDisplay.textContent = `目前顯示時間：${text}`;
 
         // Map Time Display Logic from original
         let mapText = text;
@@ -946,8 +1012,11 @@ const App = {
             const [d, t] = text.split('\n');
             mapText = `所選日期：${d}\n小時區間：${t} 時`;
         }
-        this.ui.mapTimeDisplay.textContent = mapText;
-        this.ui.mapTimeDisplay.style.whiteSpace = "pre-line"; // Ensure newlines render
+        
+        if (this.ui.mapTimeDisplay) {
+            this.ui.mapTimeDisplay.textContent = mapText;
+            this.ui.mapTimeDisplay.style.whiteSpace = "pre-line"; // Ensure newlines render
+        }
     }
 };
 
