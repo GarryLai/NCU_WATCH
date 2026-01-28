@@ -26,7 +26,7 @@
         }
 
         body {
-            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
@@ -37,6 +37,20 @@
             text-align: center;
             margin-bottom: 30px;
             position: relative;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        header h1 {
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            white-space: nowrap;
+            margin: 0.5em 0;
+        }
+
+        header p {
+            font-size: clamp(0.75rem, 3vw, 1rem);
+            white-space: nowrap;
+            margin: 0.25em 0;
         }
 
         .theme-switch-wrapper {
@@ -128,22 +142,15 @@
             transform: translateY(-5px);
         }
 
-        .weather-card h3 {
-            padding: 15px;
-            margin: 0;
-            font-size: 1.1rem;
-            background: var(--primary-color);
-            color: var(--header-text);
-            text-align: center;
-        }
+
 
         .img-container {
-            /* 依據 16:9 比例設定邊距：左右 16px，上下 9px */
-            margin: 9px 16px;
-            border-radius: 12px;
+            /* 邊框改細至 4px，讓圖卡更貼合 */
+            margin: 4px;
+            border-radius: 13px;
             overflow: hidden;
-            /* 修正寬高比計算：需扣除左右邊距 (32px) 所對應的高度 (18px)，確保內容為 16:9 */
-            padding-top: calc(56.25% - 18px);
+            /* 修正寬高比計算：扣除左右邊距 (8px) 對應的高度 (4.5px) */
+            padding-top: calc(56.25% - 4.5px);
             position: relative;
             background: var(--img-bg);
             cursor: zoom-in;
@@ -196,33 +203,29 @@
     <h1>每日天氣圖卡</h1>
     <p>資料來源：中央氣象署</p>
     <p>圖卡製作：國立中央大學大氣科學系 雷達氣象實驗室</p>
-    <div style="color: red; font-size: 20px;">【整合測試平台，僅供參考】</div>
+    <div style="color: red; font-size: clamp(1rem, 4vw, 1.25rem); padding-top: 5px; white-space: nowrap;">【整合測試平台，僅供參考】</div>
 </header>
 
 <div class="weather-grid">
     <div class="weather-card">
-        <h3>天氣概況</h3>
         <div class="img-container" onclick="openModal(this)">
             <img src="https://radar.atm.ncu.edu.tw/dailycards/1.png" alt="天氣概況">
         </div>
     </div>
 
     <div class="weather-card">
-        <h3>地面天氣圖</h3>
         <div class="img-container" onclick="openModal(this)">
             <img src="https://radar.atm.ncu.edu.tw/dailycards/2.png" alt="地面天氣圖">
         </div>
     </div>
 
     <div class="weather-card">
-        <h3>未來24小時雨量預測</h3>
         <div class="img-container" onclick="openModal(this)">
             <img src="https://radar.atm.ncu.edu.tw/dailycards/3.png" alt="雨量預測">
         </div>
     </div>
 
     <div class="weather-card">
-        <h3>未來24小時風力預報</h3>
         <div class="img-container" onclick="openModal(this)">
             <img src="https://radar.atm.ncu.edu.tw/dailycards/4.png" alt="風力預報">
         </div>
