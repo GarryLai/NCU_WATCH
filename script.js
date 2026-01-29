@@ -41,16 +41,19 @@ const UNIT_MAPPING = {
 const VARIABLE_MAPPING = {
     "溫度": { 
         key: "溫度",
+        unit: "°C",
         colors: ['#117388','#207E92','#2E899C','#3D93A6','#4C9EB0','#5BA9BA','#69B4C4','#78BFCE','#87CAD8','#96D4E2','#A4DFEC','#B3EAF6','#0C924B','#1D9A51','#2FA257','#40A95E','#51B164','#62B96A','#74C170','#85C876','#96D07C','#A7D883','#B9E089','#CAE78F','#DBEF95','#F4F4C3','#F7E78A','#F4D576','#F1C362','#EEB14E','#EA9E3A','#E78C26','#E07B03','#ED5138','#ED1759','#AD053A','#780101','#9C68AD','#845194','#8520A0'],
         thresholds: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]]
     }, 
     "降雨機率": { 
         key: "3小時降雨機率",
+        unit: "%",
         colors: ['#FFFFFF', '#E0F2F7', '#B3D9E8', '#7FB3D5', '#4A90C2', '#2E5C8A', '#FF9500', '#FF6B35', '#E63946', '#A4161A', '#5C0A0A'],
         thresholds: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]]
     }, 
     "相對濕度": { 
         key: "相對濕度",
+        unit: "%",
         colors: ["#D3E6EB", "#A7CFD8","#82F550","#4ADC0C","#93F4FF","#2DEAFF","#02D4E3"],
         thresholds: [[65,70,75,80,85,90]]
     }, 
@@ -178,11 +181,24 @@ const TimeManager = {
 
         // QPF Special Handling (Fake Time Strings)
         if (mode === 'QPF') {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${y}/${m}/${d}`;
+
+            const tmr = new Date(now);
+            tmr.setDate(tmr.getDate() + 1);
+            const ty = tmr.getFullYear();
+            const tm = String(tmr.getMonth() + 1).padStart(2, '0');
+            const td = String(tmr.getDate()).padStart(2, '0');
+            const tmrStr = `${ty}/${tm}/${td}`;
+            
+            const groupHeader = `${todayStr} 08時 ~ ${tmrStr} 08時`;
+            const qpfLabels = ["08-14", "14-20", "20-02", "02-08"];
+
             const groups = timeStrings.map((t, i) => {
-                // Upstream data interval changed to 6 hours
-                const start = i * 6;
-                const end = (i + 1) * 6;
-                const label = `${start}-${end}hr`;
+                const label = qpfLabels[i] || `${i*6}-${(i+1)*6}`;
 
                 return {
                     type: 'single',
@@ -190,7 +206,7 @@ const TimeManager = {
                     label: label,
                     periodLabel: label,
                     timestamp: new Date().getTime() + i, // Fake distinct timestamps
-                    dateKey: "未來預報" // Group header
+                    dateKey: groupHeader // Group header
                 };
             });
             this.cache.set(cacheKey, groups);
@@ -236,11 +252,11 @@ const TimeManager = {
             let dateOffset = 0; 
             
             if (mode === CONFIG.AGGREGATION.HOURS_6) {
-                // 6 Hour Logic (Original: 00-06 is 'next day' belonging to previous grouping day)
+                // 6 Hour Logic (Updated: Follows calendar day similar to 3hours)
                 if (h >= 12 && h < 18)      period = '12-18';
                 else if (h >= 18)           period = '18-00';
-                else if (h >= 0 && h < 6)   { period = '00-06'; dateOffset = -1; } 
-                else if (h >= 6 && h < 12)  { period = '06-12'; dateOffset = -1; }
+                else if (h >= 0 && h < 6)   period = '00-06';
+                else if (h >= 6 && h < 12)  period = '06-12';
             } 
             else { // 3 HOURS
                 // 3 Hour Logic (Original: strictly calendar based)
@@ -894,7 +910,7 @@ const App = {
                 
                 if (valid) {
                     color = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar);
-                    label = `${str} ${unit}`;
+                    label = str;
                 }
             }
 
@@ -939,9 +955,12 @@ const App = {
     },
 
     updateLabels() {
+        const unit = Utils.getUnit(this.state.currentVar, this.state.currentSubVar, this.state.meta);
+        const unitText = unit ? ` (單位：${unit})` : "";
+
         if (this.state.timeIndex === -1) {
             this.ui.timeDisplay.textContent = "目前顯示時間：全時段最大值";
-            this.ui.mapTimeDisplay.textContent = "全時段最大值";
+            this.ui.mapTimeDisplay.textContent = `全時段最大值${unitText}`;
             return;
         }
 
@@ -957,7 +976,7 @@ const App = {
             const [d, t] = text.split('\n');
             mapText = `所選日期：${d}\n小時區間：${t} 時`;
         }
-        this.ui.mapTimeDisplay.textContent = mapText;
+        this.ui.mapTimeDisplay.textContent = mapText + unitText;
         this.ui.mapTimeDisplay.style.whiteSpace = "pre-line"; // Ensure newlines render
     }
 };
