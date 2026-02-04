@@ -59,11 +59,15 @@ const VARIABLE_MAPPING = {
     }, 
     "風速": { 
         key: "風速",
+        // Original m/s colors and thresholds
         colors: ['#FFFFFF', '#b0fff2', '#80f9be', '#50fcaf', '#FFFEA5', '#F2DB79', '#E6B167', '#EA83ED', '#B940BD', '#6942AE', '#272F6E'],
         thresholds: [
             [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // m/s
-            [2, 4, 6, 8, 10, 12, 14, 15, 16, 17] // Beaufort
-        ]
+            [2, 4, 6, 8, 10, 12, 14, 15, 16, 17] // Old Beaufort thresholds preserved for reference/fallback
+        ],
+        // New Beaufort specific config (Extended for 9+)
+        colors_beaufort: ['#FFFFFF', '#90d6ee', '#90EE90', '#FFFF00', '#FFC107', '#FF9800', '#FF0000', '#8B0000', '#500000'],
+        thresholds_beaufort: [2, 3, 4, 5, 6, 7, 8, 9]
     },
     "定量降水預報": {
         key: "QPF",
@@ -83,7 +87,7 @@ const Utils = {
         if (typeof val === 'number') return { num: val, str: String(val), valid: true };
 
         const str = String(val).trim();
-        if (str.includes('<=')) return { num: 0, str: str, valid: true };
+        if (str.includes('<=')) return { num: 0, str: str.replace('<=', '≤'), valid: true };
         
         const parsed = parseFloat(str);
         return { num: parsed, str: str, valid: !isNaN(parsed) };
@@ -144,18 +148,34 @@ const Utils = {
         }
 
         let activeThresholds = thresholds;
-        if (Array.isArray(thresholds[0])) { // Legacy nested support
-            activeThresholds = thresholds[0];
-            if (varKey === "風速" && subVarKey === "BeaufortScale" && thresholds[1]) {
-                activeThresholds = thresholds[1];
+        let activeColors = colors;
+
+        if (varKey === "風速") {
+            if (subVarKey === "BeaufortScale") {
+                // Use new Beaufort config if available
+                if (config.colors_beaufort && config.thresholds_beaufort) {
+                    activeColors = config.colors_beaufort;
+                    activeThresholds = config.thresholds_beaufort;
+                } else if (Array.isArray(thresholds[1])) {
+                    // Fallback to old nested threshold structure
+                    activeThresholds = thresholds[1];
+                }
+            } else {
+                // Default wind (m/s)
+                if (Array.isArray(thresholds[0])) {
+                    activeThresholds = thresholds[0];
+                }
             }
+        } else if (Array.isArray(thresholds[0])) { 
+            // Legacy nested support for other vars
+            activeThresholds = thresholds[0];
         }
 
         let idx = activeThresholds.findIndex(t => val < t);
         if (idx === -1) idx = activeThresholds.length;
 
-        if (idx >= colors.length) idx = colors.length - 1;
-        return colors[idx] || '#cccccc';
+        if (idx >= activeColors.length) idx = activeColors.length - 1;
+        return activeColors[idx] || '#cccccc';
     },
 
     getUnit(varKey, subVarKey, metaInfo) {
@@ -692,6 +712,9 @@ const App = {
                 return;
             }
 
+            // Add screenshot mode class to clean up UI for capture
+            document.body.classList.add('taking-screenshot');
+
             // Small delay to ensure any map rendering is stable
             setTimeout(() => {
                 html2canvas(mainElement, {
@@ -705,11 +728,13 @@ const App = {
                     link.download = `NCU_Watcher_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
                     link.href = canvas.toDataURL('image/png');
                     link.click();
+                    document.body.classList.remove('taking-screenshot');
                 }).catch(e => {
                     console.error(e);
                     alert('擷取圖片失敗');
+                    document.body.classList.remove('taking-screenshot');
                 });
-            }, 100);
+            }, 200); // Slightly increased delay to ensure styles propagate
         });
     },
 
@@ -745,6 +770,7 @@ const App = {
         this.renderTable();
         this.renderMap();
         this.updateLabels();
+        this.renderLegend();
     },
 
     renderTable() {
@@ -952,6 +978,45 @@ const App = {
 
         this.renderMap();
         this.updateLabels();
+    },
+
+    renderLegend() {
+        const legend = document.getElementById('map-legend');
+        if (!legend) return;
+        
+        if (this.state.currentVar === "風速" && this.state.currentSubVar === "BeaufortScale") {
+            legend.style.display = 'block';
+            legend.innerHTML = `
+            <!-- Row 1: <=1, 2, 3 (Independent Grid) -->
+            <div class="l-grid" style="margin-bottom: 0.5em;">
+                <div class="l-cell"><div class="l-icon"><i style="background: #FFFFFF; border: 1px solid #ccc;"></i></div><div class="l-lvl">≤1</div></div>
+                <div class="l-cell"><div class="l-icon"><i style="background: #90d6ee;"></i></div><div class="l-lvl">2</div></div>
+                <div class="l-cell"><div class="l-icon"><i style="background: #90EE90;"></i></div><div class="l-lvl">3</div></div>
+            </div>
+
+            <!-- Group 1: Attention -->
+            <div class="l-group" style="border-color:#F5B041; color:#E67E22;">
+                <div class="l-group-title">強風注意</div>
+                <div class="l-grid">
+                    <div class="l-cell"><div class="l-icon"><i style="background: #FFFF00;"></i></div><div class="l-lvl">4</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #FFC107;"></i></div><div class="l-lvl">5</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #FF9800;"></i></div><div class="l-lvl">6</div></div>
+                </div>
+            </div>
+
+            <!-- Group 2: Warning -->
+            <div class="l-group l-warn">
+                <div class="l-group-title">強風警示</div>
+                <div class="l-grid">
+                    <div class="l-cell"><div class="l-icon"><i style="background: #FF0000;"></i></div><div class="l-lvl">7</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #8B0000;"></i></div><div class="l-lvl">8</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #500000;"></i></div><div class="l-lvl">9+</div></div>
+                </div>
+            </div>`;
+        } else {
+            legend.innerHTML = '';
+            legend.style.display = 'none';
+        }
     },
 
     updateLabels() {

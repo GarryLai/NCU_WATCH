@@ -325,3 +325,196 @@ th.day-start, td.day-start {
         justify-content: center;
     }
 }
+
+/* ==========================================================================
+   7. Map Legend & Overlay Container
+   ========================================================================== */
+.map-overlay-container {
+    position: absolute;
+    bottom: 1%;
+    left: 1%;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    /* User requested limits */
+    max-width: 55%; 
+    max-height: 40%; 
+    width: max-content;
+    pointer-events: none;
+    /* Revert to dynamic font size */
+    font-size: 120%;
+}
+
+.map-time-display {
+    /* Reset absolute positioning to be part of flow */
+    position: static !important;
+    bottom: auto !important;
+    left: auto !important;
+    
+    background-color: #ffffff; /* Solid white to avoid html2canvas artifacts */
+    padding: 0.8em 1em;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--primary-color);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    white-space: pre-line;
+    line-height: 1.4;
+    pointer-events: auto;
+    width: 100%;
+}
+
+.legend {
+    position: static !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+
+    background: #ffffff; /* Solid white to avoid html2canvas artifacts */
+    padding: 0.8em 1em;
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.05);
+    
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    
+    width: 100%;
+    pointer-events: auto;
+    border-bottom: 3px solid #eee;
+}
+
+/* When legend is displayed, remove top radius of time display for merged look */
+.legend:not([style*="display: none"]) + .map-time-display {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    /* Remove top shadow overlap if any */
+    padding-top: 0.8em;
+}
+
+.legend h4 {
+    margin: 0 0 0.5em 0;
+    font-size: 1.1em; /* Relative size */
+    color: var(--primary-color);
+    text-align: center;
+    border-bottom: 2px solid var(--border-light);
+    padding-bottom: 0.2em;
+}
+
+.l-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 3 Equal columns */
+    gap: 0.3em 0.3em;
+    align-items: center;
+    /* Remove justify-items: center to let l-cell expand */
+}
+
+/* Cell Layout: Icon + Number */
+.l-cell {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    /* Create a centerline for alignment */
+}
+
+.l-icon {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end; /* Align right to centerline */
+    padding-right: 0.2em; /* Gap between icon and center */
+    align-items: center; /* Ensure vertical center */
+}
+
+.l-icon i {
+    display: block;
+    width: 1.2em;  /* Scalable size */
+    height: 1.2em; /* Scalable size */
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    flex-shrink: 0; /* Prevent squishing */
+}
+
+.l-lvl { 
+    flex: 1;
+    text-align: center; /* Align left from centerline */
+    padding-left: 0.2em; /* Gap between center and text */
+    font-weight: 700; 
+    color: var(--primary-color);
+    font-size: 1.2em; /* Large numbers */
+}
+
+/* Headers / Separators */
+.l-head {
+    grid-column: 1 / -1;
+    font-weight: bold;
+    margin-top: 0.2em;
+    padding: 0.1em 0;
+    width: 100%;
+    border-top: 2px solid;
+    /* Removed border-bottom from here as requested to move it below the next row */
+    border-radius: 4px 4px 0 0; /* Top corners only */
+    background-color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9em !important; 
+    line-height: 1.2;
+    text-align: center;
+}
+
+.l-football {
+    grid-column: 1 / -1;
+    width: 100%;
+    border-bottom: 2px solid;
+    border-radius: 0 0 4px 4px; /* Bottom corners */
+    margin-bottom: 0.2em;
+    height: 1px; /* Minimal height */
+}
+
+.l-warn { 
+    color: #e74c3c; 
+    border-color: #e74c3c; 
+}
+
+/* ==========================================================================
+   8. Legend Groups (Boxed)
+   ========================================================================== */
+.l-group {
+    border: 2px solid; /* Color controlled by inline style or utility class */
+    border-radius: 8px; /* Match other UI */
+    margin-top: 0.5em;
+    overflow: hidden;
+}
+
+.l-group-title {
+    background-color: rgba(255, 255, 255, 0.5);
+    font-weight: bold;
+    text-align: center;
+    padding: 0.1em 0;
+    font-size: 120%;
+    border-bottom: 2px solid;
+    border-color: inherit; /* Inherit border color from parent group */
+}
+
+.l-group .l-grid {
+    padding: 0.3em 0; /* Space inside the box */
+}
+
+/* Screenshot Mode adjustments to prevent html2canvas artifacts */
+body.taking-screenshot .legend,
+body.taking-screenshot .map-time-display {
+    box-shadow: none !important;
+}
+
+body.taking-screenshot .map-overlay-container {
+    box-shadow: none !important;
+    background: #ffffff !important;
+}
+
+body.taking-screenshot .l-group {
+    /* Ensure internal borders remain */
+    box-shadow: none !important;
+}
