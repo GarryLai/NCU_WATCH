@@ -66,7 +66,7 @@ const VARIABLE_MAPPING = {
             [2, 4, 6, 8, 10, 12, 14, 15, 16, 17] // Old Beaufort thresholds preserved for reference/fallback
         ],
         // New Beaufort specific config (Extended for 9+)
-        colors_beaufort: ['#FFFFFF', '#90d6ee', '#90EE90', '#FFFF00', '#FFC107', '#FF9800', '#FF0000', '#8B0000', '#500000'],
+        colors_beaufort: ['#FFFFFF', '#6deadd', '#9dee89', '#ffe77c', '#ffc93e', '#ffac00', '#ff9292', '#df3b3b', '#a23ccb'],
         thresholds_beaufort: [2, 3, 4, 5, 6, 7, 8, 9]
     },
     "定量降水預報": {
@@ -990,17 +990,17 @@ const App = {
             <!-- Row 1: <=1, 2, 3 (Independent Grid) -->
             <div class="l-grid" style="margin-bottom: 0.5em;">
                 <div class="l-cell"><div class="l-icon"><i style="background: #FFFFFF; border: 1px solid #ccc;"></i></div><div class="l-lvl">≤1</div></div>
-                <div class="l-cell"><div class="l-icon"><i style="background: #90d6ee;"></i></div><div class="l-lvl">2</div></div>
-                <div class="l-cell"><div class="l-icon"><i style="background: #90EE90;"></i></div><div class="l-lvl">3</div></div>
+                <div class="l-cell"><div class="l-icon"><i style="background: #6deadd;"></i></div><div class="l-lvl">2</div></div>
+                <div class="l-cell"><div class="l-icon"><i style="background: #9dee89;"></i></div><div class="l-lvl">3</div></div>
             </div>
 
             <!-- Group 1: Attention -->
             <div class="l-group" style="border-color:#F5B041; color:#E67E22;">
                 <div class="l-group-title">強風注意</div>
                 <div class="l-grid">
-                    <div class="l-cell"><div class="l-icon"><i style="background: #FFFF00;"></i></div><div class="l-lvl">4</div></div>
-                    <div class="l-cell"><div class="l-icon"><i style="background: #FFC107;"></i></div><div class="l-lvl">5</div></div>
-                    <div class="l-cell"><div class="l-icon"><i style="background: #FF9800;"></i></div><div class="l-lvl">6</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #ffe77c;"></i></div><div class="l-lvl">4</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #ffc93e;"></i></div><div class="l-lvl">5</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #ffac00;"></i></div><div class="l-lvl">6</div></div>
                 </div>
             </div>
 
@@ -1008,9 +1008,9 @@ const App = {
             <div class="l-group l-warn">
                 <div class="l-group-title">強風警示</div>
                 <div class="l-grid">
-                    <div class="l-cell"><div class="l-icon"><i style="background: #FF0000;"></i></div><div class="l-lvl">7</div></div>
-                    <div class="l-cell"><div class="l-icon"><i style="background: #8B0000;"></i></div><div class="l-lvl">8</div></div>
-                    <div class="l-cell"><div class="l-icon"><i style="background: #500000;"></i></div><div class="l-lvl">9+</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #ff9292;"></i></div><div class="l-lvl">7</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #df3b3b;"></i></div><div class="l-lvl">8</div></div>
+                    <div class="l-cell"><div class="l-icon"><i style="background: #a23ccb;"></i></div><div class="l-lvl">9+</div></div>
                 </div>
             </div>`;
         } else {
