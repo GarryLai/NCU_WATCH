@@ -4,19 +4,29 @@ from io import BytesIO
 from dotenv import load_dotenv
 from google import genai
 from PIL import Image
+from pdf2image import convert_from_bytes
 
 
 def get_image_from_url(url):
     """
-    從網址載入圖片
+    從網址載入圖片，若為 PDF 則轉為圖片
     """
     try:
-        print(f"正在下載圖片: {url.split('/')[-1]}...")
+        print(f"正在下載資源: {url.split('/')[-1]}...")
         response = requests.get(url)
         response.raise_for_status()
-        return Image.open(BytesIO(response.content))
+
+        if url.lower().endswith('.pdf'):
+            # 將 PDF 轉為圖片 (取第一頁)
+            images = convert_from_bytes(response.content)
+            if images:
+                return images[0] # 回傳第一頁的 PIL Image
+            else:
+                raise ValueError("PDF 為空")
+        else:
+            return Image.open(BytesIO(response.content))
     except Exception as e:
-        print(f"無法載入圖片 {url}: {e}")
+        print(f"無法載入資源 {url}: {e}")
         raise
 
 def get_json_from_url(url):
@@ -81,7 +91,7 @@ def main():
         "https://cwa.ppp503.workers.dev/Data/fcst_img/QPF_ChFcstPrecip_6_12.png",
         "https://cwa.ppp503.workers.dev/Data/fcst_img/QPF_ChFcstPrecip_6_18.png",
         "https://cwa.ppp503.workers.dev/Data/fcst_img/QPF_ChFcstPrecip_6_24.png",
-        "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-C0035-001.jpg" #地面天氣圖
+        "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-C0035-003.pdf" #地面天氣圖
     ]
     
     images = []
@@ -99,7 +109,7 @@ def main():
     #user_prompt = "這些是未來6到24小時的降雨預報圖（每6小時一張）。請綜合分析這四張圖，說明降雨區域的變化趨勢，並提醒需要注意大雨的地區。"
     user_prompt = f'''
 Tell me the Taoyuan City daily weather overview for the next 24 hours in the agreed format (each item ≤65 Chinese characters, no '＊'),
-including: 天氣型態、降雨預報、雨勢關注區域、風力概況、風勢關注區域. Use only data from reference JSON, QPF plot and surface chart images.
+including: 天氣型態、降雨預報、雨勢關注區域、風力概況、風勢關注區域. Information on QPF plot must be used in 降雨預報. Use only data from reference JSON, QPF plot (0~6, 6~12, 12~18, 18~24 hr) and surface chart images.
 Only containing only those five lines (no title/date lines).
 
 Use the following JSON data for reference:
