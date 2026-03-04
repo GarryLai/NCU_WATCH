@@ -1,2 +1,4 @@
 .vscode
 app.py
+.env
+.venv/
