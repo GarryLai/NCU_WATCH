@@ -6,7 +6,7 @@ on:
       - ncu-web
 
 jobs:
-  deploy:
+  deploy_frontend:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Code
@@ -14,10 +14,27 @@ jobs:
       - name: Deploy to Server via rsync
         uses: Burnett01/rsync-deployments@7.0.0
         with:
-          switches: -avzr --delete
+          switches: -avzr --delete --exclude='.venv/' --exclude='.git/'
           path: ./
           remote_path: /var/www/html/web/NCU_WATCH
           remote_host: ${{ secrets.SERVER_IP }}
           remote_user: ${{ secrets.SERVER_USER }}
           remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
           args: -e "ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey"
+  deploy_backend:
+    runs-on: ubuntu-22.04
+    needs: deploy_frontend
+    steps:
+      - name: SSH and Restart Flask Service
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/${{ secrets.SERVER_USER }}/NCU_WATCH
+            source .venv/bin/activate
+            pip install -r requirements.txt
+
+            systemctl --user daemon-reload
+            systemctl --user restart ncdr-api.service
