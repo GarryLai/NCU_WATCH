@@ -32,7 +32,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/${{ secrets.SERVER_USER }}/NCU_WATCH
+            cd /var/www/html/web/NCU_WATCH
             source .venv/bin/activate
             pip install -r requirements.txt
 
