@@ -1,4 +1,6 @@
 requests==2.31.0
 python-dotenv==1.0.0
 Flask==3.0.2
+Flask-WTF==1.0.1
+Flask-Limit==2.0.1
 gunicorn==20.1.0
