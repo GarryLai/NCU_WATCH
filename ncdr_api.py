@@ -43,7 +43,7 @@ API_TOKEN_WIND = os.getenv('NCDR_API_TOKEN_WIND')
 RAIN_TARGET_URL = 'https://dataapi2.ncdr.nat.gov.tw/NCDR/EnsembleG01'
 WIND_TARGET_URL = 'https://dataapi2.ncdr.nat.gov.tw/NCDR/Ensemble05km'
 
-@app.route('/get_csrf_token', methods=['GET'])
+@app.route('/ncdr/get_csrf_token', methods=['GET'])
 def get_csrf_token():
     return jsonify({'csrf_token': generate_csrf()})
 
