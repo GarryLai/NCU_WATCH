@@ -185,6 +185,17 @@ const Utils = {
         }
         if (VARIABLE_MAPPING[varKey]?.unit) return VARIABLE_MAPPING[varKey].unit;
         return "";
+    },
+
+    pointInPoly(x, y, poly) {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][0], yi = poly[i][1];
+            const xj = poly[j][0], yj = poly[j][1];
+            const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
     }
 };
 
@@ -485,7 +496,7 @@ const QPFService = {
             for (let x = pMinX; x <= pMaxX; x++) {
                 let inside = false;
                 for (const ring of pixelPolys) {
-                    if (this.pointInPoly(x, y, ring)) {
+                    if (Utils.pointInPoly(x, y, ring)) {
                         inside = true;
                         break;
                     }
@@ -503,17 +514,6 @@ const QPFService = {
             }
         }
         return maxRain;
-    },
-
-    pointInPoly(x, y, poly) {
-        let inside = false;
-        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-            const xi = poly[i][0], yi = poly[i][1];
-            const xj = poly[j][0], yj = poly[j][1];
-            const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-            if (intersect) inside = !inside;
-        }
-        return inside;
     },
 
     matchColor(r, g, b) {
@@ -733,12 +733,12 @@ const App = {
             const geometry = feature.geometry;
 
             if (geometry.type === "Polygon") {
-                if (this.pointInPoly(lon, lat, geometry.coordinates[0])) {
+                if (Utils.pointInPoly(lon, lat, geometry.coordinates[0])) {
                     foundTown = townName;
                 }
             } else if (geometry.type === "MultiPolygon") {
                 for (const poly of geometry.coordinates) {
-                    if (this.pointInPoly(lon, lat, poly[0])) {
+                    if (Utils.pointInPoly(lon, lat, poly[0])) {
                         foundTown = townName;
                         break;
                     }
@@ -747,23 +747,6 @@ const App = {
         });
 
         return foundTown;
-    },
-
-    /**
-     * 點在多邊形內判斷 (Ray Casting Algorithm)
-     */
-    pointInPoly(x, y, poly) {
-        let inside = false;
-        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-            const xi = poly[i][0], yi = poly[i][1];
-            const xj = poly[j][0], yj = poly[j][1];
-
-            // 核心演算法邏輯
-            const intersect = ((yi > y) !== (yj > y)) && 
-                            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-            if (intersect) inside = !inside;
-        }
-        return inside;
     },
 
     initMenu() {
