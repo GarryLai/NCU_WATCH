@@ -531,6 +531,7 @@ const App = {
     state: {
         locations: [],
         locationsMap: new Map(),
+        townCoordCache: new Map(),
         meta: {},
         currentVar: null,
         currentSubVar: null,
@@ -538,6 +539,13 @@ const App = {
         currentDisplayItems: [],
         timeIndex: -1,
         csrfToken: null
+    },
+
+    ncdrBounds: {
+        minLon: 120.95,
+        maxLon: 121.50,
+        minLat: 24.55,
+        maxLat: 25.15
     },
     
     ui: {
@@ -696,23 +704,22 @@ const App = {
     parseNCDRcsv(csvText) {
         const lines = csvText.split('\n');
         const dataLines = lines.slice(2).filter(line => line.trim() !== '');
-        const headers = lines[1].split(',');
+        const headers = lines[1].split(',').map(h => h.trim());
+        const hourHeaders = headers.filter(h => h.startsWith('H'));
         const townMaxData = {};
         this.state.locations.forEach(loc => { townMaxData[loc.name] = {}; });
 
         dataLines.forEach(line => {
             const values = line.split(',');
             const row = {};
-            headers.forEach((h, i) => row[h.trim()] = parseFloat(values[i]));
+            headers.forEach((h, i) => row[h] = parseFloat(values[i]));
 
             const townName = this.findTownByCoords(row.Lon, row.Lat);
             if (townName && townMaxData[townName]) {
-                headers.forEach(h => {
-                    if (h.startsWith('H')) {
-                        const val = row[h];
-                        if (!townMaxData[townName][h] || val > townMaxData[townName][h]) {
-                            townMaxData[townName][h] = val;
-                        }
+                hourHeaders.forEach(h => {
+                    const val = row[h];
+                    if (!townMaxData[townName][h] || val > townMaxData[townName][h]) {
+                        townMaxData[townName][h] = val;
                     }
                 });
             }
@@ -722,6 +729,16 @@ const App = {
 
     findTownByCoords(lon, lat) {
         if (!this.ui.layer) return null;
+
+        const { minLon, maxLon, minLat, maxLat } = this.ncdrBounds;
+        if (lon < minLon || lon > maxLon || lat < minLat || lat > maxLat) {
+            return null;
+        }
+
+        const cacheKey = `${lon}|${lat}`;
+        if (this.state.townCoordCache.has(cacheKey)) {
+            return this.state.townCoordCache.get(cacheKey);
+        }
 
         let foundTown = null;
 
@@ -746,6 +763,7 @@ const App = {
             }
         });
 
+        this.state.townCoordCache.set(cacheKey, foundTown);
         return foundTown;
     },
 
