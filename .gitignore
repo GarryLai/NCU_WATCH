@@ -2,3 +2,6 @@
 app.py
 .env
 .venv/
+cache/
+static/
+templates/

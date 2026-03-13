@@ -536,7 +536,8 @@ const App = {
         currentSubVar: null,
         aggMode: CONFIG.AGGREGATION.HOURS_3, 
         currentDisplayItems: [],
-        timeIndex: -1
+        timeIndex: -1,
+        csrfToken: null
     },
     
     ui: {
@@ -607,6 +608,21 @@ const App = {
             .catch(e => console.error("GeoJSON failed", e));
     },
 
+    async fetchCsrfToken() {
+        try {
+            const res = await fetch('/ncdr/get_csrf_token');
+            const data = await res.json();
+            if (data.csrf_token) {
+                this.state.csrfToken = data.csrf_token;
+                console.log("Get CSRF Token Success");
+            } else {
+                console.error("Cannot find 'csrf_token' in response:", data);
+            }
+        } catch (e) {
+            console.error("CSRF Token Fetch Error:", e);
+        }
+    },
+
     async fetchData() {
         try {
             const res = await fetch(CONFIG.API_URL);
@@ -630,6 +646,46 @@ const App = {
         } catch (e) {
             console.error("Data Load Error", e);
             alert("氣象資料載入失敗");
+        }
+    },
+
+    async fetchNCDRData(type) {
+        if (!this.state.csrfToken) await this.fetchCsrfToken();
+
+        const formData = new FormData();
+        formData.append('format', 'csv');
+        formData.append('csrf_token', this.state.csrfToken);
+
+        let url = '';
+        if (type === 'rain') {
+            url = '/ncdr/EnG01';
+        } else {
+            url = '/ncdr/En05km';
+            formData.append('variable', 'uv10');
+            formData.append('number', 'N00');
+        }
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': this.state.csrfToken
+                }
+            });
+            if (!res.ok) {
+                // 增加錯誤訊息檢查，幫助確認是哪裡出問題
+                const errorData = await res.json().catch(() => ({}));
+                console.error("Server Error Response:", errorData);
+                throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown Error'}`);
+            }
+            const csvText = await res.text();
+            // return this.parseNCDRcsv(csvText, type);
+            return csvText; // For now, just return raw CSV for debugging
+        } catch (e) {
+            console.error("NCDR Data Fetch Error", e);
+            alert("NCDR資料載入失敗");
+            return null;
         }
     },
 
