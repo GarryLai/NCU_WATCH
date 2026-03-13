@@ -656,15 +656,17 @@ const App = {
         formData.append('format', 'csv');
         formData.append('csrf_token', this.state.csrfToken);
 
-        let url = '';
+        let url = '/ncdr/En05km';
         if (type === 'rain') {
-            url = '/ncdr/EnG01';
-        } else {
-            url = '/ncdr/En05km';
+            formData.append('variable', 'raintot');
+            formData.append('number', 'N00');
+        } else if (type === 'wind') {
             formData.append('variable', 'uv10');
             formData.append('number', 'N00');
-        }
-
+        } else {
+            throw new Error("Unknown NCDR variable type: " + type);
+        };
+        
         try {
             const res = await fetch(url, {
                 method: 'POST',
@@ -683,13 +685,86 @@ const App = {
                 throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown Error'}`);
             }
             const csvText = await res.text();
-            // return this.parseNCDRcsv(csvText, type);
-            return csvText; // For now, just return raw CSV for debugging
+            return this.parseNCDRcsv(csvText, type);
+            // return csvText; // For now, just return raw CSV for debugging
         } catch (e) {
             console.error("NCDR Data Fetch Error", e);
             alert("NCDR資料載入失敗");
             return null;
         }
+    },
+    
+    parseNCDRcsv(csvText) {
+        const lines = csvText.split('\n');
+        const dataLines = lines.slice(2).filter(line => line.trim() !== '');
+        const headers = lines[1].split(',');
+        const townMaxData = {};
+        this.state.locations.forEach(loc => { townMaxData[loc.name] = {}; });
+
+        dataLines.forEach(line => {
+            const values = line.split(',');
+            const row = {};
+            headers.forEach((h, i) => row[h.trim()] = parseFloat(values[i]));
+
+            const townName = this.findTownByCoords(row.Lon, row.Lat);
+            if (townName && townMaxData[townName]) {
+                headers.forEach(h => {
+                    if (h.startsWith('H')) {
+                        const val = row[h];
+                        if (!townMaxData[townName][h] || val > townMaxData[townName][h]) {
+                            townMaxData[townName][h] = val;
+                        }
+                    }
+                });
+            }
+        });
+        return townMaxData;
+    },
+
+    findTownByCoords(lon, lat) {
+        if (!this.ui.layer) return null;
+
+        let foundTown = null;
+
+        this.ui.layer.eachLayer(layer => {
+            if (foundTown) return;
+
+            const feature = layer.feature;
+            const townName = feature.properties.town;
+            const geometry = feature.geometry;
+
+            if (geometry.type === "Polygon") {
+                if (this.pointInPoly(lon, lat, geometry.coordinates[0])) {
+                    foundTown = townName;
+                }
+            } else if (geometry.type === "MultiPolygon") {
+                for (const poly of geometry.coordinates) {
+                    if (this.pointInPoly(lon, lat, poly[0])) {
+                        foundTown = townName;
+                        break;
+                    }
+                }
+            }
+        });
+
+        return foundTown;
+    },
+
+    /**
+     * 點在多邊形內判斷 (Ray Casting Algorithm)
+     */
+    pointInPoly(x, y, poly) {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][0], yi = poly[i][1];
+            const xj = poly[j][0], yj = poly[j][1];
+
+            // 核心演算法邏輯
+            const intersect = ((yi > y) !== (yj > y)) && 
+                            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
     },
 
     initMenu() {
