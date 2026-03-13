@@ -22,6 +22,7 @@ const CONFIG = {
     MAP: { CENTER: [24.85, 121.23], ZOOM: 11 },
     AGGREGATION: {
         NONE: 'none',
+        HOURLY_DAY: 'hourlyday',
         HOURS_3: '3hours',
         HOURS_6: '6hours'
     }
@@ -69,6 +70,17 @@ const VARIABLE_MAPPING = {
         colors_beaufort: ['#FFFFFF', '#6deadd', '#9dee89', '#ffe77c', '#ffc93e', '#ffac00', '#ff9292', '#df3b3b', '#a23ccb'],
         thresholds_beaufort: [2, 3, 4, 5, 6, 7, 8, 9]
     },
+    "NCDR系集十米風": {
+        key: "NCDR風速",
+        unit: "m/s",
+        colors: ['#FFFFFF', '#b0fff2', '#80f9be', '#50fcaf', '#FFFEA5', '#F2DB79', '#E6B167', '#EA83ED', '#B940BD', '#6942AE', '#272F6E'],
+        thresholds: [
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            [2, 3, 4, 5, 6, 7, 8, 9]
+        ],
+        colors_beaufort: ['#FFFFFF', '#6deadd', '#9dee89', '#ffe77c', '#ffc93e', '#ffac00', '#ff9292', '#df3b3b', '#a23ccb'],
+        thresholds_beaufort: [2, 3, 4, 5, 6, 7, 8, 9]
+    },
     "定量降水預報": {
         key: "QPF",
         unit: "mm",
@@ -91,6 +103,38 @@ const Utils = {
         
         const parsed = parseFloat(str);
         return { num: parsed, str: str, valid: !isNaN(parsed) };
+    },
+
+    parseRecDateTime(raw) {
+        if (!raw) return null;
+
+        const str = String(raw).trim();
+        const compact = str.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+        if (compact) {
+            const [, y, m, d, hh, mm] = compact;
+            return new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), 0);
+        }
+
+        const iso = new Date(str);
+        if (!isNaN(iso.getTime())) return iso;
+        return null;
+    },
+
+    wsToBeaufort(ws) {
+        if (!Number.isFinite(ws) || ws < 0) return null;
+        if (ws < 0.3) return 0;
+        if (ws < 1.6) return 1;
+        if (ws < 3.4) return 2;
+        if (ws < 5.5) return 3;
+        if (ws < 8.0) return 4;
+        if (ws < 10.8) return 5;
+        if (ws < 13.9) return 6;
+        if (ws < 17.2) return 7;
+        if (ws < 20.8) return 8;
+        if (ws < 24.5) return 9;
+        if (ws < 28.5) return 10;
+        if (ws < 32.7) return 11;
+        return 12;
     },
 
     calculateAggregatedValue(element, indices, subKey) {
@@ -150,7 +194,7 @@ const Utils = {
         let activeThresholds = thresholds;
         let activeColors = colors;
 
-        if (varKey === "風速") {
+        if (varKey === "風速" || varKey === "NCDR系集十米風") {
             if (subVarKey === "BeaufortScale") {
                 // Use new Beaufort config if available
                 if (config.colors_beaufort && config.thresholds_beaufort) {
@@ -269,6 +313,31 @@ const TimeManager = {
                     dateKey: `${d.getFullYear()}/${mm}/${dd}`
                 });
             });
+            this.cache.set(cacheKey, groups);
+            return groups;
+        }
+
+        // 2.5 Mode: Hourly points within today 12 -> tomorrow 12
+        if (mode === CONFIG.AGGREGATION.HOURLY_DAY) {
+            parsedDates.forEach((d, i) => {
+                const t = d.getTime();
+                if (t < startFilter.getTime() || t >= endFilter.getTime()) return;
+
+                const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+                const dd = d.getDate().toString().padStart(2, '0');
+                const hh = d.getHours().toString().padStart(2, '0');
+
+                groups.push({
+                    type: 'single',
+                    indices: [i],
+                    label: `${mm}/${dd} ${hh}:00`,
+                    periodLabel: hh,
+                    timestamp: t,
+                    dateKey: `${d.getFullYear()}/${mm}/${dd}`
+                });
+            });
+
+            groups.sort((a, b) => a.timestamp - b.timestamp);
             this.cache.set(cacheKey, groups);
             return groups;
         }
@@ -538,7 +607,9 @@ const App = {
         aggMode: CONFIG.AGGREGATION.HOURS_3, 
         currentDisplayItems: [],
         timeIndex: -1,
-        csrfToken: null
+        csrfToken: null,
+        ncdrWindLoaded: false,
+        ncdrWindBaseTime: null
     },
 
     ncdrBounds: {
@@ -693,7 +764,7 @@ const App = {
                 throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown Error'}`);
             }
             const csvText = await res.text();
-            return this.parseNCDRcsv(csvText);
+            return this.parseNCDRcsv(csvText, type);
         } catch (e) {
             console.error("NCDR Data Fetch Error", e);
             alert("NCDR資料載入失敗");
@@ -701,10 +772,18 @@ const App = {
         }
     },
     
-    parseNCDRcsv(csvText) {
-        const lines = csvText.split('\n');
+    parseNCDRcsv(csvText, type) {
+        const lines = csvText.split('\n').map(line => line.replace(/\r/g, ''));
+        if (lines.length < 3) return null;
+
+        const recDateTimeRaw = (lines[0].split(',')[1] || '').trim();
         const dataLines = lines.slice(2).filter(line => line.trim() !== '');
         const headers = lines[1].split(',').map(h => h.trim());
+
+        if (type === 'wind') {
+            return this.parseNCDRWindCsv(headers, dataLines, recDateTimeRaw);
+        }
+
         const hourHeaders = headers.filter(h => h.startsWith('H'));
         const townMaxData = {};
         this.state.locations.forEach(loc => { townMaxData[loc.name] = {}; });
@@ -725,6 +804,87 @@ const App = {
             }
         });
         return townMaxData;
+    },
+
+    parseNCDRWindCsv(headers, dataLines, recDateTimeRaw) {
+        const baseTime = Utils.parseRecDateTime(recDateTimeRaw);
+        const hourIds = Array.from(new Set(
+            headers
+                .map(h => {
+                    const m = h.match(/^H(\d{2})_(u|v)$/i);
+                    return m ? m[1] : null;
+                })
+                .filter(Boolean)
+        )).sort((a, b) => Number(a) - Number(b));
+
+        const townHourlyWs = {};
+        this.state.locations.forEach(loc => { townHourlyWs[loc.name] = {}; });
+
+        dataLines.forEach(line => {
+            const values = line.split(',');
+            const row = {};
+            headers.forEach((h, i) => row[h] = values[i]);
+
+            const lon = parseFloat(row.Lon ?? row.lon);
+            const lat = parseFloat(row.Lat ?? row.lat);
+            const townName = this.findTownByCoords(lon, lat);
+            if (!townName || !townHourlyWs[townName]) return;
+
+            hourIds.forEach(hh => {
+                const u = parseFloat(row[`H${hh}_u`]);
+                const v = parseFloat(row[`H${hh}_v`]);
+                if (!Number.isFinite(u) || !Number.isFinite(v)) return;
+
+                const ws = Math.hypot(u, v);
+                const hourKey = `H${hh}`;
+                const existing = townHourlyWs[townName][hourKey];
+                if (!Number.isFinite(existing) || ws > existing) {
+                    townHourlyWs[townName][hourKey] = ws;
+                }
+            });
+        });
+
+        return { baseTime, hourIds, townHourlyWs };
+    },
+
+    injectNCDRWindData(parsedWind) {
+        if (!parsedWind) return;
+
+        const { baseTime, hourIds, townHourlyWs } = parsedWind;
+        this.state.ncdrWindBaseTime = baseTime;
+
+        this.state.meta.WindSpeed = {
+            '@description': '風速',
+            '@unit': '公尺/秒'
+        };
+        this.state.meta.BeaufortScale = {
+            '@description': '蒲福風級',
+            '@unit': '蒲福風級'
+        };
+
+        this.state.locations.forEach(loc => {
+            const wsByHour = townHourlyWs[loc.name] || {};
+            const times = hourIds.map(hh => {
+                const hourKey = `H${hh}`;
+                const ws = wsByHour[hourKey];
+                const date = baseTime
+                    ? new Date(baseTime.getTime() + Number(hh) * 3600 * 1000)
+                    : null;
+
+                return {
+                    StartTime: date ? date.toISOString() : hourKey,
+                    ElementValue: {
+                        WindSpeed: Number.isFinite(ws) ? Number(ws.toFixed(1)) : null,
+                        BeaufortScale: Number.isFinite(ws) ? Utils.wsToBeaufort(ws) : null
+                    }
+                };
+            });
+
+            loc.data["NCDR風速"] = {
+                ElementName: "NCDR風速",
+                Time: times
+            };
+        });
     },
 
     findTownByCoords(lon, lat) {
@@ -796,7 +956,12 @@ const App = {
                 return `<option value="${k}">${label}</option>`;
             }).join('');
             subSel.style.display = 'inline-block';
-            this.state.currentSubVar = subKeys[0];
+            if (this.state.currentVar === "NCDR系集十米風" && subKeys.includes("BeaufortScale")) {
+                this.state.currentSubVar = "BeaufortScale";
+                subSel.value = "BeaufortScale";
+            } else {
+                this.state.currentSubVar = subKeys[0];
+            }
         } else {
             subSel.style.display = 'none';
             this.state.currentSubVar = null;
@@ -815,6 +980,18 @@ const App = {
                 if (!this.state.locations[0].data["QPF"]) {
                      this.ui.timeDisplay.textContent = "正在解析雨量圖...";
                      await QPFService.process();
+                }
+            } else if (this.state.currentVar === "NCDR系集十米風") {
+                document.getElementById('aggregation-mode-select').disabled = false;
+                this.state.aggMode = document.getElementById('aggregation-mode-select').value;
+
+                if (!this.state.ncdrWindLoaded) {
+                    this.ui.timeDisplay.textContent = "正在載入 NCDR系集十米風...";
+                    const parsedWind = await this.fetchNCDRData('wind');
+                    if (parsedWind) {
+                        this.injectNCDRWindData(parsedWind);
+                        this.state.ncdrWindLoaded = true;
+                    }
                 }
             } else {
                 document.getElementById('aggregation-mode-select').disabled = false;
@@ -911,11 +1088,16 @@ const App = {
         const { tableHeader, tableBody } = this.ui;
         const items = this.state.currentDisplayItems;
         const config = VARIABLE_MAPPING[this.state.currentVar];
+        const isMergedDateHeaderMode = (
+            this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
+        );
 
         tableHeader.innerHTML = '';
         
         // 1. HEADER GENERATION
-        if (this.state.aggMode !== CONFIG.AGGREGATION.NONE && items.length > 0) {
+        if (isMergedDateHeaderMode && items.length > 0) {
             // Two-row header
             const row1 = document.createElement('tr');
             const row2 = document.createElement('tr');
@@ -965,6 +1147,7 @@ const App = {
             items.forEach((item, idx) => {
                 const th = document.createElement('th');
                 th.textContent = item.label;
+                th.className = 'time-header';
                 th.style.whiteSpace = "pre-line"; // Restored style
                 if (idx === this.state.timeIndex) th.classList.add('active-time');
                 th.onclick = () => this.selectTime(idx);
@@ -1015,6 +1198,50 @@ const App = {
         
         tableBody.innerHTML = '';
         tableBody.appendChild(frag);
+
+        this.applyTableLayout(items.length);
+    },
+
+    applyTableLayout(itemCount) {
+        const table = document.getElementById('weather-table');
+        if (!table) return;
+
+        const existingColgroup = table.querySelector('colgroup');
+        if (existingColgroup) existingColgroup.remove();
+
+        const colgroup = document.createElement('colgroup');
+        const locationRatio = 14;
+        const dataRatio = itemCount > 0 ? (100 - locationRatio) / itemCount : (100 - locationRatio);
+
+        const colLocation = document.createElement('col');
+        colLocation.style.width = `${locationRatio}%`;
+        colgroup.appendChild(colLocation);
+
+        for (let i = 0; i < itemCount; i++) {
+            const col = document.createElement('col');
+            col.style.width = `${dataRatio}%`;
+            colgroup.appendChild(col);
+        }
+
+        table.prepend(colgroup);
+
+        let fontSize = '';
+        if (itemCount >= 24) fontSize = '1.5rem';
+        else if (itemCount >= 8) fontSize = '2.0rem';
+        else if (itemCount >= 4) fontSize = '2.2rem';
+
+        const timeHeaders = this.ui.tableHeader.querySelectorAll('th.time-header');
+        timeHeaders.forEach(th => {
+            th.style.fontSize = fontSize;
+        });
+
+        const allRows = this.ui.tableBody.querySelectorAll('tr');
+        allRows.forEach(row => {
+            const dataCells = row.querySelectorAll('td:not(:first-child)');
+            dataCells.forEach(td => {
+                td.style.fontSize = fontSize;
+            });
+        });
     },
 
     renderMap() {
@@ -1095,7 +1322,11 @@ const App = {
         // Filter those that have checkable behavior or class
         // Easier: Re-render table headers? No, expensive.
         // DOM Manipulation:
-        if (this.state.aggMode !== CONFIG.AGGREGATION.NONE) {
+        if (
+            this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
+        ) {
              const timeRow = this.ui.tableHeader.lastElementChild;
              Array.from(timeRow.children).forEach((th, i) => {
                  if (i === this.state.timeIndex) th.classList.add('active-time');
@@ -1118,7 +1349,8 @@ const App = {
         const legend = document.getElementById('map-legend');
         if (!legend) return;
         
-        if (this.state.currentVar === "風速" && this.state.currentSubVar === "BeaufortScale") {
+        if ((this.state.currentVar === "風速" || this.state.currentVar === "NCDR系集十米風")
+            && this.state.currentSubVar === "BeaufortScale") {
             legend.style.display = 'block';
             legend.innerHTML = `
             <!-- Row 1: <=1, 2, 3 (Independent Grid) -->
