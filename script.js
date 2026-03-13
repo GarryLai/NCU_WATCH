@@ -666,7 +666,7 @@ const App = {
         } else {
             throw new Error("Unknown NCDR variable type: " + type);
         };
-        
+
         try {
             const res = await fetch(url, {
                 method: 'POST',
@@ -685,8 +685,7 @@ const App = {
                 throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown Error'}`);
             }
             const csvText = await res.text();
-            return this.parseNCDRcsv(csvText, type);
-            // return csvText; // For now, just return raw CSV for debugging
+            return this.parseNCDRcsv(csvText);
         } catch (e) {
             console.error("NCDR Data Fetch Error", e);
             alert("NCDR資料載入失敗");
