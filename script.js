@@ -1089,6 +1089,9 @@ const App = {
         const items = this.state.currentDisplayItems;
         const config = VARIABLE_MAPPING[this.state.currentVar];
         const isMergedDateHeaderMode = (
+            this.state.aggMode === 'QPF'
+            || this.state.currentVar === "定量降水預報"
+            ||
             this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
