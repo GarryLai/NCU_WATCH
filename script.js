@@ -674,7 +674,10 @@ const App = {
                 }
             });
             if (!res.ok) {
-                // 增加錯誤訊息檢查，幫助確認是哪裡出問題
+                if (res.status === 429) {
+                    alert("請求過於頻繁，請稍後再試");
+                    return null;
+                }
                 const errorData = await res.json().catch(() => ({}));
                 console.error("Server Error Response:", errorData);
                 throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown Error'}`);
