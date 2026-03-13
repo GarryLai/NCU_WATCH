@@ -39,6 +39,9 @@ const UNIT_MAPPING = {
     "攝氏度": "°C", "百分比": "%", "公尺/秒": "m/s", "蒲福風級": "級"
 };
 
+const QPF_THRESHOLDS = [0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70, 90, 110, 130, 150, 200, 300];
+const QPF_COLORS = ['#EDF9FE', '#C2C2C2', '#9CFCFF', '#03C8FF', '#059BFF', '#0363FF', '#059902', '#39FF03', '#FFFB03', '#FFC800', '#FF9500', '#FF0000', '#CC0000', '#990000', '#960099', '#C900CC', '#FB00FF', '#FDC9FF'];
+
 const VARIABLE_MAPPING = {
     "溫度": { 
         key: "溫度",
@@ -85,8 +88,14 @@ const VARIABLE_MAPPING = {
         key: "QPF",
         unit: "mm",
         // Valid for val >= threshold
-        thresholds: [0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70, 90, 110, 130, 150, 200, 300],
-        colors: ['#EDF9FE', '#C2C2C2', '#9CFCFF', '#03C8FF', '#059BFF', '#0363FF', '#059902', '#39FF03', '#FFFB03', '#FFC800', '#FF9500', '#FF0000', '#CC0000', '#990000', '#960099', '#C900CC', '#FB00FF', '#FDC9FF']
+        thresholds: QPF_THRESHOLDS,
+        colors: QPF_COLORS
+    },
+    "NCDR系集降雨預報": {
+        key: "NCDR降雨",
+        unit: "mm",
+        thresholds: QPF_THRESHOLDS,
+        colors: QPF_COLORS
     }
 };
 
@@ -176,7 +185,7 @@ const Utils = {
         const thresholds = config.thresholds;
 
         // QPF Logic: value matches a specific discrete bin color
-        if (varKey === "定量降水預報") {
+        if (varKey === "定量降水預報" || varKey === "NCDR系集降雨預報") {
             if (val === 0) return colors[0];
             
             // Check exact match first
@@ -609,7 +618,9 @@ const App = {
         timeIndex: -1,
         csrfToken: null,
         ncdrWindLoaded: false,
-        ncdrWindBaseTime: null
+        ncdrWindBaseTime: null,
+        ncdrRainLoaded: false,
+        ncdrRainBaseTime: null
     },
 
     ncdrBounds: {
@@ -784,6 +795,10 @@ const App = {
             return this.parseNCDRWindCsv(headers, dataLines, recDateTimeRaw);
         }
 
+        if (type === 'rain') {
+            return this.parseNCDRRainCsv(headers, dataLines, recDateTimeRaw);
+        }
+
         const hourHeaders = headers.filter(h => h.startsWith('H'));
         const townMaxData = {};
         this.state.locations.forEach(loc => { townMaxData[loc.name] = {}; });
@@ -804,6 +819,41 @@ const App = {
             }
         });
         return townMaxData;
+    },
+
+    parseNCDRRainCsv(headers, dataLines, recDateTimeRaw) {
+        const baseTime = Utils.parseRecDateTime(recDateTimeRaw);
+        const hourIds = headers
+            .filter(h => /^H\d{2}$/i.test(h))
+            .map(h => h.slice(1))
+            .sort((a, b) => Number(a) - Number(b));
+
+        const townHourlyRain = {};
+        this.state.locations.forEach(loc => { townHourlyRain[loc.name] = {}; });
+
+        dataLines.forEach(line => {
+            const values = line.split(',');
+            const row = {};
+            headers.forEach((h, i) => row[h] = values[i]);
+
+            const lon = parseFloat(row.Lon ?? row.lon);
+            const lat = parseFloat(row.Lat ?? row.lat);
+            const townName = this.findTownByCoords(lon, lat);
+            if (!townName || !townHourlyRain[townName]) return;
+
+            hourIds.forEach(hh => {
+                const rain = parseFloat(row[`H${hh}`]);
+                if (!Number.isFinite(rain)) return;
+
+                const hourKey = `H${hh}`;
+                const existing = townHourlyRain[townName][hourKey];
+                if (!Number.isFinite(existing) || rain > existing) {
+                    townHourlyRain[townName][hourKey] = rain;
+                }
+            });
+        });
+
+        return { baseTime, hourIds, townHourlyRain };
     },
 
     parseNCDRWindCsv(headers, dataLines, recDateTimeRaw) {
@@ -882,6 +932,41 @@ const App = {
 
             loc.data["NCDR風速"] = {
                 ElementName: "NCDR風速",
+                Time: times
+            };
+        });
+    },
+
+    injectNCDRRainData(parsedRain) {
+        if (!parsedRain) return;
+
+        const { baseTime, hourIds, townHourlyRain } = parsedRain;
+        this.state.ncdrRainBaseTime = baseTime;
+
+        this.state.meta.Rainfall = {
+            '@description': '雨量',
+            '@unit': 'mm'
+        };
+
+        this.state.locations.forEach(loc => {
+            const rainByHour = townHourlyRain[loc.name] || {};
+            const times = hourIds.map(hh => {
+                const hourKey = `H${hh}`;
+                const rain = rainByHour[hourKey];
+                const date = baseTime
+                    ? new Date(baseTime.getTime() + Number(hh) * 3600 * 1000)
+                    : null;
+
+                return {
+                    StartTime: date ? date.toISOString() : hourKey,
+                    ElementValue: {
+                        Rainfall: Number.isFinite(rain) ? Math.round(rain) : null
+                    }
+                };
+            });
+
+            loc.data["NCDR降雨"] = {
+                ElementName: "NCDR降雨",
                 Time: times
             };
         });
@@ -991,6 +1076,18 @@ const App = {
                     if (parsedWind) {
                         this.injectNCDRWindData(parsedWind);
                         this.state.ncdrWindLoaded = true;
+                    }
+                }
+            } else if (this.state.currentVar === "NCDR系集降雨預報") {
+                document.getElementById('aggregation-mode-select').disabled = false;
+                this.state.aggMode = document.getElementById('aggregation-mode-select').value;
+
+                if (!this.state.ncdrRainLoaded) {
+                    this.ui.timeDisplay.textContent = "正在載入 NCDR系集降雨預報...";
+                    const parsedRain = await this.fetchNCDRData('rain');
+                    if (parsedRain) {
+                        this.injectNCDRRainData(parsedRain);
+                        this.state.ncdrRainLoaded = true;
                     }
                 }
             } else {
