@@ -620,7 +620,9 @@ const App = {
         ncdrWindLoaded: false,
         ncdrWindBaseTime: null,
         ncdrRainLoaded: false,
-        ncdrRainBaseTime: null
+        ncdrRainBaseTime: null,
+        ncdrRainRawSeries: new Map(),
+        ncdrRainCumSeries: new Map()
     },
 
     ncdrBounds: {
@@ -853,7 +855,40 @@ const App = {
             });
         });
 
-        return { baseTime, hourIds, townHourlyRain };
+        const townHourlyStepRainRaw = {};
+        this.state.locations.forEach(loc => {
+            const townName = loc.name;
+            const cumByHour = townHourlyRain[townName] || {};
+            const stepByHour = {};
+
+            hourIds.forEach((hh, idx) => {
+                const hourKey = `H${hh}`;
+                const curCum = cumByHour[hourKey];
+                const nextHourId = hourIds[idx + 1];
+                const nextCum = nextHourId ? cumByHour[`H${nextHourId}`] : null;
+                const prevHourId = hourIds[idx - 1];
+                const prevCum = prevHourId ? cumByHour[`H${prevHourId}`] : null;
+
+                if (!Number.isFinite(curCum)) {
+                    stepByHour[hourKey] = null;
+                    return;
+                }
+
+                if (Number.isFinite(nextCum)) {
+                    stepByHour[hourKey] = Math.max(nextCum - curCum, 0);
+                } else {
+                    if (Number.isFinite(prevCum)) {
+                        stepByHour[hourKey] = Math.max(curCum - prevCum, 0);
+                    } else {
+                        stepByHour[hourKey] = Math.max(curCum, 0);
+                    }
+                }
+            });
+
+            townHourlyStepRainRaw[townName] = stepByHour;
+        });
+
+        return { baseTime, hourIds, townHourlyRainRaw: townHourlyStepRainRaw, townHourlyRainCum: townHourlyRain };
     },
 
     parseNCDRWindCsv(headers, dataLines, recDateTimeRaw) {
@@ -940,8 +975,10 @@ const App = {
     injectNCDRRainData(parsedRain) {
         if (!parsedRain) return;
 
-        const { baseTime, hourIds, townHourlyRain } = parsedRain;
+        const { baseTime, hourIds, townHourlyRainRaw, townHourlyRainCum } = parsedRain;
         this.state.ncdrRainBaseTime = baseTime;
+        this.state.ncdrRainRawSeries.clear();
+        this.state.ncdrRainCumSeries.clear();
 
         this.state.meta.Rainfall = {
             '@description': '雨量',
@@ -949,21 +986,31 @@ const App = {
         };
 
         this.state.locations.forEach(loc => {
-            const rainByHour = townHourlyRain[loc.name] || {};
+            const rainRawByHour = townHourlyRainRaw[loc.name] || {};
+            const rainCumByHour = townHourlyRainCum[loc.name] || {};
+            const rawSeries = [];
+            const cumSeries = [];
             const times = hourIds.map(hh => {
                 const hourKey = `H${hh}`;
-                const rain = rainByHour[hourKey];
+                const rainRaw = rainRawByHour[hourKey];
+                const rainCum = rainCumByHour[hourKey];
                 const date = baseTime
                     ? new Date(baseTime.getTime() + Number(hh) * 3600 * 1000)
                     : null;
 
+                rawSeries.push(Number.isFinite(rainRaw) ? rainRaw : null);
+                cumSeries.push(Number.isFinite(rainCum) ? rainCum : null);
+
                 return {
                     StartTime: date ? date.toISOString() : hourKey,
                     ElementValue: {
-                        Rainfall: Number.isFinite(rain) ? Math.round(rain) : null
+                        Rainfall: Number.isFinite(rainRaw) ? rainRaw : null
                     }
                 };
             });
+
+            this.state.ncdrRainRawSeries.set(loc.name, rawSeries);
+            this.state.ncdrRainCumSeries.set(loc.name, cumSeries);
 
             loc.data["NCDR降雨"] = {
                 ElementName: "NCDR降雨",
@@ -1181,6 +1228,53 @@ const App = {
         this.renderLegend();
     },
 
+    formatNCDRRainValue(rawVal) {
+        if (!Number.isFinite(rawVal)) {
+            return { num: 0, str: "-", valid: false };
+        }
+
+        const nonNeg = Math.max(rawVal, 0);
+        const rounded = Math.ceil(nonNeg);
+        const str = (nonNeg > 0 && nonNeg < 1) ? "<1" : String(rounded);
+
+        return { num: rounded, str, valid: true };
+    },
+
+    calculateDisplayValue(locName, element, indices) {
+        if (this.state.currentVar === "NCDR系集降雨預報") {
+            const rawSeries = this.state.ncdrRainRawSeries.get(locName);
+            if (!rawSeries || !Array.isArray(indices) || indices.length === 0) {
+                return { num: 0, str: "-", valid: false };
+            }
+
+            const shouldSumNCDRRainPeriod = (
+                this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
+                || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
+            ) && indices.length > 1;
+
+            if (shouldSumNCDRRainPeriod) {
+                let sumRaw = 0;
+                let found = false;
+
+                for (const idx of indices) {
+                    const raw = rawSeries[idx];
+                    if (Number.isFinite(raw)) {
+                        sumRaw += raw;
+                        found = true;
+                    }
+                }
+
+                if (!found) return { num: 0, str: "-", valid: false };
+                return this.formatNCDRRainValue(sumRaw);
+            }
+
+            const raw = rawSeries[indices[0]];
+            return this.formatNCDRRainValue(raw);
+        }
+
+        return Utils.calculateAggregatedValue(element, indices, this.state.currentSubVar);
+    },
+
     renderTable() {
         const { tableHeader, tableBody } = this.ui;
         const items = this.state.currentDisplayItems;
@@ -1277,11 +1371,7 @@ const App = {
                     td.classList.add('day-start');
                 }
 
-                const { num, str, valid } = Utils.calculateAggregatedValue(
-                    element, 
-                    item.indices, 
-                    this.state.currentSubVar
-                );
+                const { num, str, valid } = this.calculateDisplayValue(loc.name, element, item.indices);
                 
                 td.textContent = str;
                 if (valid) {
@@ -1350,6 +1440,20 @@ const App = {
         const config = VARIABLE_MAPPING[this.state.currentVar];
         const unit = Utils.getUnit(this.state.currentVar, this.state.currentSubVar, this.state.meta);
 
+        let ncdrRainMinIndex = null;
+        let ncdrRainMaxIndex = null;
+        if (
+            this.state.currentVar === "NCDR系集降雨預報"
+            && this.state.timeIndex === -1
+            && this.state.currentDisplayItems.length > 0
+        ) {
+            const allIndices = this.state.currentDisplayItems.flatMap(item => item.indices || []);
+            if (allIndices.length > 0) {
+                ncdrRainMinIndex = Math.min(...allIndices);
+                ncdrRainMaxIndex = Math.max(...allIndices);
+            }
+        }
+
         this.ui.layer.eachLayer(layer => {
             const town = layer.feature.properties.town; 
             const loc = this.state.locationsMap.get(town);
@@ -1361,34 +1465,43 @@ const App = {
                 let num, str, valid = false;
 
                 if (this.state.timeIndex === -1 && this.state.currentDisplayItems.length > 0) {
-                     // Max Mode
-                     let maxVal = -Infinity;
-                     let maxStr = 'N/A';
-                     this.state.currentDisplayItems.forEach(item => {
-                         const res = Utils.calculateAggregatedValue(
-                             loc.data[config.key], 
-                             item.indices, 
-                             this.state.currentSubVar
-                         );
-                         if (res.valid && res.num > maxVal) {
-                             maxVal = res.num;
-                             maxStr = res.str;
-                             valid = true;
+                     if (this.state.currentVar === "NCDR系集降雨預報") {
+                         const cumSeries = this.state.ncdrRainCumSeries.get(loc.name);
+                         if (
+                             cumSeries
+                             && Number.isInteger(ncdrRainMinIndex)
+                             && Number.isInteger(ncdrRainMaxIndex)
+                             && Number.isFinite(cumSeries[ncdrRainMinIndex])
+                             && Number.isFinite(cumSeries[ncdrRainMaxIndex])
+                         ) {
+                             const periodRaw = Math.max(cumSeries[ncdrRainMaxIndex] - cumSeries[ncdrRainMinIndex], 0);
+                             const formatted = this.formatNCDRRainValue(periodRaw);
+                             num = formatted.num;
+                             str = formatted.str;
+                             valid = formatted.valid;
                          }
-                     });
-                     if (valid) {
-                         num = maxVal;
-                         str = maxStr;
+                     } else {
+                         // Max Mode
+                         let maxVal = -Infinity;
+                         let maxStr = 'N/A';
+                         this.state.currentDisplayItems.forEach(item => {
+                             const res = this.calculateDisplayValue(loc.name, loc.data[config.key], item.indices);
+                             if (res.valid && res.num > maxVal) {
+                                 maxVal = res.num;
+                                 maxStr = res.str;
+                                 valid = true;
+                             }
+                         });
+                         if (valid) {
+                             num = maxVal;
+                             str = maxStr;
+                         }
                      }
                 } else {
                     // Specific Time Mode
                     const activeItem = this.state.currentDisplayItems[this.state.timeIndex];
                     if (activeItem) {
-                        const res = Utils.calculateAggregatedValue(
-                            loc.data[config.key], 
-                            activeItem.indices, 
-                            this.state.currentSubVar
-                        );
+                        const res = this.calculateDisplayValue(loc.name, loc.data[config.key], activeItem.indices);
                         num = res.num;
                         str = res.str;
                         valid = res.valid;
@@ -1490,6 +1603,20 @@ const App = {
         const unitText = unit ? ` (單位：${unit})` : "";
 
         if (this.state.timeIndex === -1) {
+            if (this.state.currentVar === "NCDR系集降雨預報") {
+                let tableUnitText = "時降雨(單位：mm/hr";
+                if (this.state.aggMode === CONFIG.AGGREGATION.HOURS_3) {
+                    tableUnitText = "3小時降雨(單位：mm/3hr";
+                } else if (this.state.aggMode === CONFIG.AGGREGATION.HOURS_6) {
+                    tableUnitText = "6小時降雨(單位：mm/6hr";
+                }
+
+                this.ui.timeDisplay.textContent = "";
+                this.ui.mapTimeDisplay.textContent = `圖：累積降雨(單位：mm)\n表：逐${tableUnitText})`;
+                this.ui.mapTimeDisplay.style.whiteSpace = "pre-line";
+                return;
+            }
+
             this.ui.timeDisplay.textContent = "目前顯示時間：全時段最大值";
             this.ui.mapTimeDisplay.textContent = `全時段最大值${unitText}`;
             return;
