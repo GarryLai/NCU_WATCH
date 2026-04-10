@@ -23,6 +23,8 @@ const CONFIG = {
     AGGREGATION: {
         NONE: 'none',
         HOURLY_DAY: 'hourlyday',
+        HOURLY_DAY_MAX: 'hourlydaymax',
+        HOURLY_3H_MAX: 'hourly3hmax',
         HOURS_3: '3hours',
         HOURS_6: '6hours'
     }
@@ -1066,8 +1068,57 @@ const App = {
         sel.innerHTML = keys.map(k => `<option value="${k}">${k}</option>`).join('');
         this.state.currentVar = keys[0]; 
         
+        this.updateAggregationModeOptions();
         this.updateSubMenu();
         this.updateData();
+    },
+
+    updateAggregationModeOptions() {
+        const aggSel = document.getElementById('aggregation-mode-select');
+        if (!aggSel) return;
+
+        if (this.state.currentVar === "NCDR系集降雨預報") {
+            const current = this.state.aggMode;
+            aggSel.innerHTML = `
+                <option value="${CONFIG.AGGREGATION.NONE}">不合併</option>
+                <option value="${CONFIG.AGGREGATION.HOURLY_DAY}">單日逐時+累積降雨圖</option>
+                <option value="${CONFIG.AGGREGATION.HOURLY_DAY_MAX}">單日逐時+全時段最大</option>
+                <option value="${CONFIG.AGGREGATION.HOURLY_3H_MAX}">單日逐3小時+全時段最大</option>
+                <option value="${CONFIG.AGGREGATION.HOURS_3}">單日3小時合併</option>
+                <option value="${CONFIG.AGGREGATION.HOURS_6}">單日6小時合併</option>
+            `;
+
+            if ([
+                CONFIG.AGGREGATION.NONE,
+                CONFIG.AGGREGATION.HOURLY_DAY,
+                CONFIG.AGGREGATION.HOURLY_DAY_MAX,
+                CONFIG.AGGREGATION.HOURLY_3H_MAX,
+                CONFIG.AGGREGATION.HOURS_3,
+                CONFIG.AGGREGATION.HOURS_6
+            ].includes(current)) {
+                aggSel.value = current;
+            } else {
+                aggSel.value = CONFIG.AGGREGATION.HOURLY_DAY;
+                this.state.aggMode = CONFIG.AGGREGATION.HOURLY_DAY;
+            }
+            return;
+        }
+
+        const current = this.state.aggMode;
+        aggSel.innerHTML = `
+            <option value="${CONFIG.AGGREGATION.NONE}">不合併</option>
+            <option value="${CONFIG.AGGREGATION.HOURLY_DAY}">單日逐時</option>
+            <option value="${CONFIG.AGGREGATION.HOURS_3}">單日3小時合併</option>
+            <option value="${CONFIG.AGGREGATION.HOURS_6}">單日6小時合併</option>
+        `;
+
+        if (
+            current === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || current === CONFIG.AGGREGATION.HOURLY_3H_MAX
+        ) {
+            this.state.aggMode = CONFIG.AGGREGATION.HOURLY_DAY;
+        }
+        aggSel.value = this.state.aggMode;
     },
 
     updateSubMenu() {
@@ -1103,6 +1154,7 @@ const App = {
     bindEvents() {
         document.getElementById('variable-select').addEventListener('change', async e => {
             this.state.currentVar = e.target.value;
+            this.updateAggregationModeOptions();
             
             if (this.state.currentVar === "定量降水預報") {
                 document.getElementById('aggregation-mode-select').disabled = true;
@@ -1205,17 +1257,23 @@ const App = {
             
             // QPF Mode or standard
             const mode = (this.state.currentVar === "定量降水預報") ? 'QPF' : this.state.aggMode;
+            const normalizedMode = (
+                mode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+                || mode === CONFIG.AGGREGATION.HOURLY_3H_MAX
+            )
+                ? CONFIG.AGGREGATION.HOURLY_DAY
+                : mode;
             
             // Interval logic (Standard)
             let interval = 1;
-            if (mode !== 'QPF' && rawTimes.length > 1) {
+            if (normalizedMode !== 'QPF' && rawTimes.length > 1) {
                 const diff = new Date(rawTimes[1]) - new Date(rawTimes[0]);
                 if (diff >= 3 * 3600 * 1000) interval = 3;
             }
 
             this.state.currentDisplayItems = TimeManager.generateGroups(
                 rawTimes, 
-                mode, 
+                normalizedMode, 
                 interval
             );
         } else {
@@ -1243,8 +1301,34 @@ const App = {
     calculateDisplayValue(locName, element, indices) {
         if (this.state.currentVar === "NCDR系集降雨預報") {
             const rawSeries = this.state.ncdrRainRawSeries.get(locName);
+            const cumSeries = this.state.ncdrRainCumSeries.get(locName);
             if (!rawSeries || !Array.isArray(indices) || indices.length === 0) {
                 return { num: 0, str: "-", valid: false };
+            }
+
+            if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX) {
+                const idx = indices[0];
+                if (
+                    cumSeries
+                    && Number.isInteger(idx)
+                    && Number.isFinite(cumSeries[idx + 1])
+                    && Number.isFinite(cumSeries[idx - 2])
+                ) {
+                    const rolling3h = Math.max(cumSeries[idx + 1] - cumSeries[idx - 2], 0);
+                    return this.formatNCDRRainValue(rolling3h);
+                }
+
+                let sumRaw = 0;
+                let found = false;
+                for (let i = Math.max(0, idx - 2); i <= idx; i++) {
+                    const raw = rawSeries[i];
+                    if (Number.isFinite(raw)) {
+                        sumRaw += raw;
+                        found = true;
+                    }
+                }
+                if (!found) return { num: 0, str: "-", valid: false };
+                return this.formatNCDRRainValue(sumRaw);
             }
 
             const shouldSumNCDRRainPeriod = (
@@ -1286,6 +1370,8 @@ const App = {
             this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
         );
 
         tableHeader.innerHTML = '';
@@ -1445,6 +1531,7 @@ const App = {
         if (
             this.state.currentVar === "NCDR系集降雨預報"
             && this.state.timeIndex === -1
+            && this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
             && this.state.currentDisplayItems.length > 0
         ) {
             const allIndices = this.state.currentDisplayItems.flatMap(item => item.indices || []);
@@ -1465,7 +1552,10 @@ const App = {
                 let num, str, valid = false;
 
                 if (this.state.timeIndex === -1 && this.state.currentDisplayItems.length > 0) {
-                     if (this.state.currentVar === "NCDR系集降雨預報") {
+                     if (
+                         this.state.currentVar === "NCDR系集降雨預報"
+                         && this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
+                     ) {
                          const cumSeries = this.state.ncdrRainCumSeries.get(loc.name);
                          if (
                              cumSeries
@@ -1539,6 +1629,8 @@ const App = {
             this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
         ) {
              const timeRow = this.ui.tableHeader.lastElementChild;
              Array.from(timeRow.children).forEach((th, i) => {
@@ -1604,6 +1696,20 @@ const App = {
 
         if (this.state.timeIndex === -1) {
             if (this.state.currentVar === "NCDR系集降雨預報") {
+                if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX) {
+                    this.ui.timeDisplay.textContent = "";
+                    this.ui.mapTimeDisplay.textContent = "圖：全時段最大值(單位：mm/hr)\n表：逐時降雨(單位：mm/hr)";
+                    this.ui.mapTimeDisplay.style.whiteSpace = "pre-line";
+                    return;
+                }
+
+                if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX) {
+                    this.ui.timeDisplay.textContent = "";
+                    this.ui.mapTimeDisplay.textContent = "圖：全時段最大值(單位：mm/3hr)\n表：逐3小時降雨(單位：mm/3hr)";
+                    this.ui.mapTimeDisplay.style.whiteSpace = "pre-line";
+                    return;
+                }
+
                 let tableUnitText = "時降雨(單位：mm/hr";
                 if (this.state.aggMode === CONFIG.AGGREGATION.HOURS_3) {
                     tableUnitText = "3小時降雨(單位：mm/3hr";
