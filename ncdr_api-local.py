@@ -85,10 +85,25 @@ def get_latest_obs_rain_filename():
 
     candidates.sort(key=lambda x: x[0], reverse=True)
     latest = candidates[0][1]
+    suffix = latest.removeprefix('taoyuan_rainfall_24H_moving_').removesuffix('.json')
+    date_part, time_part = suffix.split('_', 1)
     return jsonify({
         'filename': latest,
-        'url': f'/{latest}'
+        'url': f'/ncdr/obs_rain/file/{date_part}/{time_part}'
     })
+
+@app.route('/ncdr/obs_rain/file/<date_part>/<time_part>', methods=['GET'])
+@limiter.exempt
+def get_obs_rain_file(date_part, time_part):
+    if not re.fullmatch(r'\d{8}', date_part) or not re.fullmatch(r'\d{4}', time_part):
+        abort(404)
+
+    filename = f'taoyuan_rainfall_24H_moving_{date_part}_{time_part}.json'
+    file_path = os.path.join(app.root_path, filename)
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    return send_from_directory(app.root_path, filename, mimetype='application/json')
 
 @app.route('/ncdr/get_csrf_token', methods=['GET'])
 def get_csrf_token():
