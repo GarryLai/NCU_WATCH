@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import json
 from flask import Flask, request, jsonify, Response
@@ -42,6 +43,28 @@ API_TOKEN_RAIN = os.getenv('NCDR_API_TOKEN_RAIN')
 API_TOKEN_WIND = os.getenv('NCDR_API_TOKEN_WIND')
 RAIN_TARGET_URL = 'https://dataapi2.ncdr.nat.gov.tw/NCDR/EnsembleG01'
 WIND_TARGET_URL = 'https://dataapi2.ncdr.nat.gov.tw/NCDR/Ensemble05km'
+
+@app.route('/ncdr/obs_rain/latest', methods=['GET'])
+@limiter.exempt
+def get_latest_obs_rain_filename():
+    pattern = re.compile(r'^taoyuan_rainfall_24H_moving_(\d{8})_(\d{4})\.json$')
+    candidates = []
+
+    for name in os.listdir(app.root_path):
+        m = pattern.fullmatch(name)
+        if not m:
+            continue
+        candidates.append((f"{m.group(1)}{m.group(2)}", name))
+
+    if not candidates:
+        return jsonify({'error': 'No observation rainfall JSON file found'}), 404
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    latest = candidates[0][1]
+    return jsonify({
+        'filename': latest,
+        'url': f'/{latest}'
+    })
 
 @app.route('/ncdr/get_csrf_token', methods=['GET'])
 def get_csrf_token():

@@ -1,7 +1,8 @@
 import os
+import re
 import requests
 import json
-from flask import Flask, request, jsonify, Response, render_template
+from flask import Flask, request, jsonify, Response, render_template, send_from_directory, abort
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -52,6 +53,42 @@ def index():
 @limiter.exempt
 def get_twtown2010_3_json():
     return render_template('twtown2010.3.json')
+
+@app.route('/taoyuan_rainfall_24H_moving_<date_part>_<time_part>.json', methods=['GET'])
+@limiter.exempt
+def get_taoyuan_rainfall_moving_json(date_part, time_part):
+    if not re.fullmatch(r'\d{8}', date_part) or not re.fullmatch(r'\d{4}', time_part):
+        abort(404)
+
+    filename = f'taoyuan_rainfall_24H_moving_{date_part}_{time_part}.json'
+    file_path = os.path.join(app.root_path, filename)
+
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    return send_from_directory(app.root_path, filename, mimetype='application/json')
+
+@app.route('/ncdr/obs_rain/latest', methods=['GET'])
+@limiter.exempt
+def get_latest_obs_rain_filename():
+    pattern = re.compile(r'^taoyuan_rainfall_24H_moving_(\d{8})_(\d{4})\.json$')
+    candidates = []
+
+    for name in os.listdir(app.root_path):
+        m = pattern.fullmatch(name)
+        if not m:
+            continue
+        candidates.append((f"{m.group(1)}{m.group(2)}", name))
+
+    if not candidates:
+        return jsonify({'error': 'No observation rainfall JSON file found'}), 404
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    latest = candidates[0][1]
+    return jsonify({
+        'filename': latest,
+        'url': f'/{latest}'
+    })
 
 @app.route('/ncdr/get_csrf_token', methods=['GET'])
 def get_csrf_token():

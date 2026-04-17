@@ -24,10 +24,12 @@ const CONFIG = {
         NONE: 'none',
         HOURLY_DAY: 'hourlyday',
         HOURLY_DAY_MAX: 'hourlydaymax',
+        HOURLY_DAY_24H_MAX: 'hourlyday24hmax',
         HOURLY_3H_MAX: 'hourly3hmax',
         HOURS_3: '3hours',
         HOURS_6: '6hours'
-    }
+    },
+    OBS_RAIN_LATEST_API: '/ncdr/obs_rain/latest'
 };
 
 const NAME_MAPPING = {
@@ -622,9 +624,13 @@ const App = {
         ncdrWindLoaded: false,
         ncdrWindBaseTime: null,
         ncdrRainLoaded: false,
+        ncdrObsRainLoaded: false,
         ncdrRainBaseTime: null,
         ncdrRainRawSeries: new Map(),
-        ncdrRainCumSeries: new Map()
+        ncdrRainCumSeries: new Map(),
+        obsRainRequestedTime: null,
+        obsRain24hByTown: new Map(),
+        obsRainSourceUrl: null
     },
 
     ncdrBounds: {
@@ -785,6 +791,141 @@ const App = {
             alert("NCDR資料載入失敗");
             return null;
         }
+    },
+
+    normalizeTownName(name) {
+        if (!name) return null;
+        const n = String(name).trim();
+        return NAME_MAPPING[n] || n;
+    },
+
+    async fetchObservedRain24hData() {
+        try {
+            const latestRes = await fetch(`${CONFIG.OBS_RAIN_LATEST_API}?t=${Date.now()}`, { cache: 'no-store' });
+            if (!latestRes.ok) {
+                console.warn('Failed to query latest observation rainfall filename');
+                return false;
+            }
+
+            const latest = await latestRes.json();
+            const url = latest?.url || (latest?.filename ? `/${latest.filename}` : null);
+            if (!url) {
+                console.warn('Latest observation rainfall response has no URL');
+                return false;
+            }
+
+            const res = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+            if (!res.ok) {
+                console.warn(`Failed to fetch observation rainfall JSON: ${url}`);
+                return false;
+            }
+
+            const data = await res.json();
+            const ok = this.parseObservedRain24hJson(data, url);
+            if (!ok) {
+                console.warn('Observation rainfall JSON format is invalid');
+                return false;
+            }
+
+            this.state.ncdrObsRainLoaded = true;
+            console.log(`Observed 24h rain loaded from ${url}`);
+            return true;
+        } catch (e) {
+            console.warn('Observed 24h rain loading failed', e);
+            return false;
+        }
+    },
+
+    parseObservedRain24hJson(payload, sourceUrl) {
+        if (!payload || !Array.isArray(payload.data)) return false;  // Basic validation
+
+        const requestedTime = Utils.parseRecDateTime(payload.requested_time || payload.window_end);
+        const byTown = new Map();
+
+        payload.data.forEach(st => {
+            const districtRaw = st?.district;
+            const town = this.normalizeTownName(districtRaw);
+            const moving = st?.moving_accumulation_mm;
+            if (!town || !moving || typeof moving !== 'object') return; // Skip invalid entries
+
+            if (!byTown.has(town)) byTown.set(town, []); // Initialize array for town if not exists
+            byTown.get(town).push({
+                stationId: st.station_id,
+                stationName: st.station_name,
+                moving
+            });
+        });
+
+        this.state.obsRain24hByTown.clear();
+        byTown.forEach((v, k) => this.state.obsRain24hByTown.set(k, v));
+        this.state.obsRainRequestedTime = requestedTime;
+        this.state.obsRainSourceUrl = sourceUrl || null;
+
+        return this.state.obsRain24hByTown.size > 0;
+    },
+
+    getObservedRainAccumByHour(locName, targetTime, fallbackHours = 22) {
+        const stations = this.state.obsRain24hByTown.get(locName);
+        if (!stations || stations.length === 0) return null;
+
+        let acHours = fallbackHours;
+        const refTime = this.state.obsRainRequestedTime;
+
+        if (targetTime instanceof Date && Number.isFinite(targetTime.getTime()) && refTime instanceof Date && Number.isFinite(refTime.getTime())) {
+            const hourDiff = Math.round((targetTime.getTime() - refTime.getTime()) / 3600000);
+            acHours = 23 - hourDiff;
+        }
+
+        acHours = Math.max(0, Math.min(24, acHours));
+        if (acHours === 0) return 0;
+
+        const key = `${acHours}hAC`;
+        const boundedFallback = Math.max(0, Math.min(24, fallbackHours));
+        const fallbackKey = boundedFallback === 0 ? null : `${boundedFallback}hAC`;
+
+        let maxVal = null;
+        for (const st of stations) {
+            const val = Number(st?.moving?.[key]);
+            if (Number.isFinite(val) && (maxVal == null || val > maxVal)) {
+                maxVal = val;
+            }
+        }
+
+        if (maxVal == null && fallbackKey && fallbackKey !== key) {
+            for (const st of stations) {
+                const val = Number(st?.moving?.[fallbackKey]);
+                if (Number.isFinite(val) && (maxVal == null || val > maxVal)) {
+                    maxVal = val;
+                }
+            }
+        }
+
+        return maxVal;
+    },
+
+    getNCDRForecastAccumFor24hMode(locName, idx) {
+        const rawSeries = this.state.ncdrRainRawSeries.get(locName);
+        if (!rawSeries || !Number.isInteger(idx)) return null;
+
+        const displayItems = this.state.currentDisplayItems || [];
+        const dayStartIdx = displayItems.length > 0 ? Number(displayItems[0]?.indices?.[0]) : null;
+        const baseIdx = Number.isInteger(dayStartIdx) ? dayStartIdx : idx;
+
+        const endIdx = idx + 1;
+        const dynamicHours = Math.max(1, Math.min(24, (idx - baseIdx) + 2));
+        const startIdx = Math.max(0, endIdx - dynamicHours + 1);
+
+        let sum = 0;
+        let found = false;
+        for (let i = startIdx; i <= endIdx; i++) {
+            const val = rawSeries[i];
+            if (Number.isFinite(val)) {
+                sum += val;
+                found = true;
+            }
+        }
+
+        return found ? sum : null;
     },
     
     parseNCDRcsv(csvText, type) {
@@ -1083,6 +1224,7 @@ const App = {
                 <option value="${CONFIG.AGGREGATION.NONE}">不合併</option>
                 <option value="${CONFIG.AGGREGATION.HOURLY_DAY}">單日逐時+累積降雨圖</option>
                 <option value="${CONFIG.AGGREGATION.HOURLY_DAY_MAX}">單日逐時+全時段最大</option>
+                <option value="${CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX}">單日逐24小時+全時段最大</option>
                 <option value="${CONFIG.AGGREGATION.HOURLY_3H_MAX}">單日逐3小時+全時段最大</option>
                 <option value="${CONFIG.AGGREGATION.HOURS_3}">單日3小時合併</option>
                 <option value="${CONFIG.AGGREGATION.HOURS_6}">單日6小時合併</option>
@@ -1092,6 +1234,7 @@ const App = {
                 CONFIG.AGGREGATION.NONE,
                 CONFIG.AGGREGATION.HOURLY_DAY,
                 CONFIG.AGGREGATION.HOURLY_DAY_MAX,
+                CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX,
                 CONFIG.AGGREGATION.HOURLY_3H_MAX,
                 CONFIG.AGGREGATION.HOURS_3,
                 CONFIG.AGGREGATION.HOURS_6
@@ -1114,6 +1257,7 @@ const App = {
 
         if (
             current === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || current === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX
             || current === CONFIG.AGGREGATION.HOURLY_3H_MAX
         ) {
             this.state.aggMode = CONFIG.AGGREGATION.HOURLY_DAY;
@@ -1189,6 +1333,10 @@ const App = {
                         this.state.ncdrRainLoaded = true;
                     }
                 }
+
+                if (!this.state.ncdrObsRainLoaded) {
+                    await this.fetchObservedRain24hData();
+                }
             } else {
                 document.getElementById('aggregation-mode-select').disabled = false;
                 this.state.aggMode = document.getElementById('aggregation-mode-select').value;
@@ -1259,6 +1407,7 @@ const App = {
             const mode = (this.state.currentVar === "定量降水預報") ? 'QPF' : this.state.aggMode;
             const normalizedMode = (
                 mode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+                || mode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX
                 || mode === CONFIG.AGGREGATION.HOURLY_3H_MAX
             )
                 ? CONFIG.AGGREGATION.HOURLY_DAY
@@ -1331,6 +1480,22 @@ const App = {
                 return this.formatNCDRRainValue(sumRaw);
             }
 
+            if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
+                const idx = indices[0];
+                const rawTime = element?.Time?.[idx]?.StartTime || element?.Time?.[idx]?.DataTime;
+                const targetTime = rawTime ? new Date(rawTime) : null;
+
+                const obsAccum = this.getObservedRainAccumByHour(locName, targetTime, 22);
+                const fcstAccum = this.getNCDRForecastAccumFor24hMode(locName, idx);
+
+                if (!Number.isFinite(obsAccum) && !Number.isFinite(fcstAccum)) {
+                    return { num: 0, str: "-", valid: false };
+                }
+
+                const total24h = (Number.isFinite(obsAccum) ? obsAccum : 0) + (Number.isFinite(fcstAccum) ? fcstAccum : 0);
+                return this.formatNCDRRainValue(total24h);
+            }
+
             const shouldSumNCDRRainPeriod = (
                 this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
                 || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
@@ -1371,6 +1536,7 @@ const App = {
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
         );
 
@@ -1630,6 +1796,7 @@ const App = {
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
         ) {
              const timeRow = this.ui.tableHeader.lastElementChild;
@@ -1706,6 +1873,13 @@ const App = {
                 if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX) {
                     this.ui.timeDisplay.textContent = "";
                     this.ui.mapTimeDisplay.textContent = "圖：全時段最大值(單位：mm/3hr)\n表：逐3小時降雨(單位：mm/3hr)";
+                    this.ui.mapTimeDisplay.style.whiteSpace = "pre-line";
+                    return;
+                }
+
+                if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
+                    this.ui.timeDisplay.textContent = "";
+                    this.ui.mapTimeDisplay.textContent = "圖：全時段最大值(mm/24hr)\n表：逐時24小時累積(mm/24hr)";
                     this.ui.mapTimeDisplay.style.whiteSpace = "pre-line";
                     return;
                 }
