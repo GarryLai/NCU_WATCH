@@ -1,0 +1,67 @@
+name: Download CWA Open Data
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+env:
+  REMOTE_BASE_PATH: /var/www/html/web/NCU_WATCH
+
+jobs:
+  download_and_upload:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Set timestamp (Asia/Taipei)
+        run: |
+          NOW=$(TZ=Asia/Taipei date +'%Y%m%d_%H%M')
+          echo "NOW=$NOW" >> "$GITHUB_ENV"
+          echo "REMOTE_DIR=CWA_$NOW" >> "$GITHUB_ENV"
+
+      - name: Download CWA files
+        env:
+          CWA_OPEN_API_TOKEN: ${{ secrets.CWA_OPEN_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p download
+
+          curl -fL "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-C0032-031.FW50" \
+            -o download/F-C0032-031.FW50
+
+          curl -fL -G "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-C0032-022" \
+            --data-urlencode "Authorization=${CWA_OPEN_API_TOKEN}" \
+            --data-urlencode "downloadType=WEB" \
+            --data-urlencode "format=JSON" \
+            -o download/F-C0032-022.json
+
+          curl -fL -G "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-D0047-005" \
+            --data-urlencode "Authorization=${CWA_OPEN_API_TOKEN}" \
+            --data-urlencode "downloadType=WEB" \
+            --data-urlencode "format=JSON" \
+            -o download/F-D0047-005.json
+
+      - name: Prepare SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts
+
+      - name: Create remote folder and upload files
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR="${REMOTE_BASE_PATH}/${REMOTE_DIR}"
+
+          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}" "mkdir -p '${TARGET_DIR}'"
+
+          scp \
+            download/F-C0032-031.FW50 \
+            download/F-C0032-022.json \
+            download/F-D0047-005.json \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:${TARGET_DIR}/"
+
+      - name: Show upload target
+        run: echo "Uploaded files to ${REMOTE_BASE_PATH}/${REMOTE_DIR}"
