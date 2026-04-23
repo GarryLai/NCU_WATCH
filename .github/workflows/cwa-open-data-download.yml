@@ -32,6 +32,15 @@ jobs:
           curl -fL "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-C0032-031.FW50" \
             -o download/F-C0032-031.FW50
 
+          curl -fL "https://cwaopendata.s3.ap-northeast-1.amazonaws.com/Forecast/F-C0044-001.FW01" \
+            -o download/F-C0044-001.FW01
+
+          curl -fL -G "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-A0010-001" \
+            --data-urlencode "Authorization=${CWA_OPEN_API_TOKEN}" \
+            --data-urlencode "downloadType=WEB" \
+            --data-urlencode "format=JSON" \
+            -o download/F-A0010-001.json
+
           curl -fL -G "https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/F-C0032-022" \
             --data-urlencode "Authorization=${CWA_OPEN_API_TOKEN}" \
             --data-urlencode "downloadType=WEB" \
@@ -62,6 +71,8 @@ jobs:
 
           scp \
             download/F-C0032-031.FW50 \
+            download/F-C0044-001.FW01 \
+            download/F-A0010-001.json \
             download/F-C0032-022.json \
             download/F-D0047-005.json \
             "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:${TARGET_DIR}/"
