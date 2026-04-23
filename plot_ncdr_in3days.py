@@ -21,7 +21,7 @@ LST_OFFSET = timedelta(hours=8)
 def parse_args():
     parser = argparse.ArgumentParser(description="繪製三天逐日累積降雨圖（每一天為 24 小時時雨量加總）")
     parser.add_argument("--csv", default="test_rain_G01.csv", help="NCDR 時雨量 CSV（含 H00~H84）")
-    parser.add_argument("--json", default="test_rain_G01.JSON", help="NCDR JSON（含 RecDateTime）")
+    parser.add_argument("--json", default="test_rain_G01.json", help="NCDR JSON（含 RecDateTime）")
     parser.add_argument("--start-date", default=None, help="起算日期（YYYY-MM-DD）")
     parser.add_argument("--mode", choices=["daily", "12hr"], default="daily", help="累積模式：daily=每日24hr(3張)、12hr=半天12hr(6張)")
     parser.add_argument("--county-shp", default="/mnt/d/TW_GEOG/TW_CITY/COUNTY_MOI_1090820.shp", help="縣市界 SHP")
@@ -336,7 +336,7 @@ def main():
                 transform=ax.transAxes,
                 ha="left",
                 va="top",
-                fontsize=10,
+                fontsize=14,
                 fontweight="bold",
                 color="black",
                 zorder=6,
