@@ -133,6 +133,37 @@ const Utils = {
         return null;
     },
 
+    parseRecDateTimeAsUTC(raw) {
+        if (!raw) return null;
+
+        const str = String(raw).trim();
+
+        // Compact format from NCDR, e.g. 202604241200 (UTC)
+        const compact = str.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+        if (compact) {
+            const [, y, m, d, hh, mm] = compact;
+            return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), 0));
+        }
+
+        // ISO string without timezone should be treated as UTC for NCDR RecDateTime.
+        const isoNoTz = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (isoNoTz) {
+            const [, y, m, d, hh, mm, ss] = isoNoTz;
+            return new Date(Date.UTC(
+                Number(y),
+                Number(m) - 1,
+                Number(d),
+                Number(hh),
+                Number(mm),
+                Number(ss || 0)
+            ));
+        }
+
+        const parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) return parsed;
+        return null;
+    },
+
     wsToBeaufort(ws) {
         if (!Number.isFinite(ws) || ws < 0) return null;
         if (ws < 0.3) return 0;
@@ -626,6 +657,7 @@ const App = {
         ncdrRainLoaded: false,
         ncdrObsRainLoaded: false,
         ncdrRainBaseTime: null,
+        ncdrRainEnsemble: 'G01',
         ncdrRainRawSeries: new Map(),
         ncdrRainCumSeries: new Map(),
         obsRainRequestedTime: null,
@@ -758,8 +790,13 @@ const App = {
 
         let url = '/ncdr/En05km';
         if (type === 'rain') {
-            formData.append('variable', 'raintot');
-            formData.append('number', 'N00');
+            const ensemble = this.state.ncdrRainEnsemble;
+            if (ensemble === 'G01') {
+                url = '/ncdr/EnG01';
+            } else {
+                formData.append('variable', 'raintot');
+                formData.append('number', ensemble);
+            }
         } else if (type === 'wind') {
             formData.append('variable', 'uv10');
             formData.append('number', 'N00');
@@ -941,7 +978,8 @@ const App = {
         }
 
         if (type === 'rain') {
-            return this.parseNCDRRainCsv(headers, dataLines, recDateTimeRaw);
+            const directHourly = this.state.ncdrRainEnsemble === 'G01';
+            return this.parseNCDRRainCsv(headers, dataLines, recDateTimeRaw, directHourly);
         }
 
         const hourHeaders = headers.filter(h => h.startsWith('H'));
@@ -966,8 +1004,8 @@ const App = {
         return townMaxData;
     },
 
-    parseNCDRRainCsv(headers, dataLines, recDateTimeRaw) {
-        const baseTime = Utils.parseRecDateTime(recDateTimeRaw);
+    parseNCDRRainCsv(headers, dataLines, recDateTimeRaw, directHourly = false) {
+        const baseTime = Utils.parseRecDateTimeAsUTC(recDateTimeRaw);
         const hourIds = headers
             .filter(h => /^H\d{2}$/i.test(h))
             .map(h => h.slice(1))
@@ -1004,38 +1042,67 @@ const App = {
             const cumByHour = townHourlyRain[townName] || {};
             const stepByHour = {};
 
-            hourIds.forEach((hh, idx) => {
-                const hourKey = `H${hh}`;
-                const curCum = cumByHour[hourKey];
-                const nextHourId = hourIds[idx + 1];
-                const nextCum = nextHourId ? cumByHour[`H${nextHourId}`] : null;
-                const prevHourId = hourIds[idx - 1];
-                const prevCum = prevHourId ? cumByHour[`H${prevHourId}`] : null;
+            if (directHourly) {
+                // G01: each H column is direct hourly rainfall, no differencing needed
+                hourIds.forEach(hh => {
+                    const hourKey = `H${hh}`;
+                    const val = cumByHour[hourKey];
+                    stepByHour[hourKey] = Number.isFinite(val) ? Math.max(val, 0) : null;
+                });
+            } else {
+                hourIds.forEach((hh, idx) => {
+                    const hourKey = `H${hh}`;
+                    const curCum = cumByHour[hourKey];
+                    const nextHourId = hourIds[idx + 1];
+                    const nextCum = nextHourId ? cumByHour[`H${nextHourId}`] : null;
+                    const prevHourId = hourIds[idx - 1];
+                    const prevCum = prevHourId ? cumByHour[`H${prevHourId}`] : null;
 
-                if (!Number.isFinite(curCum)) {
-                    stepByHour[hourKey] = null;
-                    return;
-                }
-
-                if (Number.isFinite(nextCum)) {
-                    stepByHour[hourKey] = Math.max(nextCum - curCum, 0);
-                } else {
-                    if (Number.isFinite(prevCum)) {
-                        stepByHour[hourKey] = Math.max(curCum - prevCum, 0);
-                    } else {
-                        stepByHour[hourKey] = Math.max(curCum, 0);
+                    if (!Number.isFinite(curCum)) {
+                        stepByHour[hourKey] = null;
+                        return;
                     }
-                }
-            });
+
+                    if (Number.isFinite(nextCum)) {
+                        stepByHour[hourKey] = Math.max(nextCum - curCum, 0);
+                    } else {
+                        if (Number.isFinite(prevCum)) {
+                            stepByHour[hourKey] = Math.max(curCum - prevCum, 0);
+                        } else {
+                            stepByHour[hourKey] = Math.max(curCum, 0);
+                        }
+                    }
+                });
+            }
 
             townHourlyStepRainRaw[townName] = stepByHour;
         });
 
-        return { baseTime, hourIds, townHourlyRainRaw: townHourlyStepRainRaw, townHourlyRainCum: townHourlyRain };
+        // For G01 (direct hourly), build cumulative series as running sum
+        let finalCum = townHourlyRain;
+        if (directHourly) {
+            const cumulativeByTown = {};
+            this.state.locations.forEach(loc => {
+                const townName = loc.name;
+                const stepByHour = townHourlyStepRainRaw[townName] || {};
+                const cumByHour = {};
+                let running = 0;
+                hourIds.forEach(hh => {
+                    const hourKey = `H${hh}`;
+                    const step = stepByHour[hourKey];
+                    if (Number.isFinite(step)) running += step;
+                    cumByHour[hourKey] = running;
+                });
+                cumulativeByTown[townName] = cumByHour;
+            });
+            finalCum = cumulativeByTown;
+        }
+
+        return { baseTime, hourIds, townHourlyRainRaw: townHourlyStepRainRaw, townHourlyRainCum: finalCum };
     },
 
     parseNCDRWindCsv(headers, dataLines, recDateTimeRaw) {
-        const baseTime = Utils.parseRecDateTime(recDateTimeRaw);
+        const baseTime = Utils.parseRecDateTimeAsUTC(recDateTimeRaw);
         const hourIds = Array.from(new Set(
             headers
                 .map(h => {
@@ -1208,6 +1275,14 @@ const App = {
         
         sel.innerHTML = keys.map(k => `<option value="${k}">${k}</option>`).join('');
         this.state.currentVar = keys[0]; 
+
+        // Initialize ensemble select options
+        const ensembleSel = document.getElementById('ncdr-rain-ensemble-select');
+        if (ensembleSel) {
+            const options = ['G01', ...Array.from({ length: 20 }, (_, i) => `N${String(i).padStart(2, '0')}`)];
+            ensembleSel.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+            ensembleSel.value = this.state.ncdrRainEnsemble;
+        }
         
         this.updateAggregationModeOptions();
         this.updateSubMenu();
@@ -1293,6 +1368,12 @@ const App = {
             subSel.style.display = 'none';
             this.state.currentSubVar = null;
         }
+
+        // Show/hide ensemble select for NCDR rain
+        const ensembleLabel = document.getElementById('ncdr-rain-ensemble-label');
+        if (ensembleLabel) {
+            ensembleLabel.style.display = (this.state.currentVar === "NCDR系集降雨預報") ? 'inline' : 'none';
+        }
     },
 
     bindEvents() {
@@ -1326,7 +1407,7 @@ const App = {
                 this.state.aggMode = document.getElementById('aggregation-mode-select').value;
 
                 if (!this.state.ncdrRainLoaded) {
-                    this.ui.timeDisplay.textContent = "正在載入 NCDR系集降雨預報...";
+                    this.ui.timeDisplay.textContent = `正在載入 NCDR系集降雨預報 (${this.state.ncdrRainEnsemble})...`;
                     const parsedRain = await this.fetchNCDRData('rain');
                     if (parsedRain) {
                         this.injectNCDRRainData(parsedRain);
@@ -1351,6 +1432,24 @@ const App = {
             this.state.currentSubVar = e.target.value;
             this.updateData(); // Re-calc data
         });
+
+        const ensembleSel = document.getElementById('ncdr-rain-ensemble-select');
+        if (ensembleSel) {
+            ensembleSel.addEventListener('change', async e => {
+                const newEnsemble = e.target.value;
+                if (newEnsemble === this.state.ncdrRainEnsemble) return;
+                this.state.ncdrRainEnsemble = newEnsemble;
+                this.state.ncdrRainLoaded = false;
+                this.ui.timeDisplay.textContent = `正在載入 NCDR系集降雨預報 (${newEnsemble})...`;
+                const parsedRain = await this.fetchNCDRData('rain');
+                if (parsedRain) {
+                    this.injectNCDRRainData(parsedRain);
+                    this.state.ncdrRainLoaded = true;
+                }
+                this.state.timeIndex = -1;
+                this.updateData();
+            });
+        }
 
         document.getElementById('aggregation-mode-select').addEventListener('change', e => {
             this.state.aggMode = e.target.value;
