@@ -940,16 +940,20 @@ const App = {
         return maxVal;
     },
 
-    getNCDRForecastAccumFor24hMode(locName, idx) {
+    getNCDRForecastAccumFor24hMode(locName, idx, hoursOverride) {
         const rawSeries = this.state.ncdrRainRawSeries.get(locName);
         if (!rawSeries || !Number.isInteger(idx)) return null;
 
-        const displayItems = this.state.currentDisplayItems || [];
-        const dayStartIdx = displayItems.length > 0 ? Number(displayItems[0]?.indices?.[0]) : null;
-        const baseIdx = Number.isInteger(dayStartIdx) ? dayStartIdx : idx;
-
         const endIdx = idx + 1;
-        const dynamicHours = Math.max(1, Math.min(24, (idx - baseIdx) + 2));
+        let dynamicHours;
+        if (Number.isFinite(hoursOverride)) {
+            dynamicHours = Math.max(1, Math.min(24, hoursOverride));
+        } else {
+            const displayItems = this.state.currentDisplayItems || [];
+            const dayStartIdx = displayItems.length > 0 ? Number(displayItems[0]?.indices?.[0]) : null;
+            const baseIdx = Number.isInteger(dayStartIdx) ? dayStartIdx : idx;
+            dynamicHours = Math.max(1, Math.min(24, (idx - baseIdx) + 2));
+        }
         const startIdx = Math.max(0, endIdx - dynamicHours + 1);
 
         let sum = 0;
@@ -1584,8 +1588,27 @@ const App = {
                 const rawTime = element?.Time?.[idx]?.StartTime || element?.Time?.[idx]?.DataTime;
                 const targetTime = rawTime ? new Date(rawTime) : null;
 
-                const obsAccum = this.getObservedRainAccumByHour(locName, targetTime, 22);
-                const fcstAccum = this.getNCDRForecastAccumFor24hMode(locName, idx);
+                // Compute how many obs hours are available for this target time
+                const stationsAvail = (this.state.obsRain24hByTown.get(locName)?.length ?? 0) > 0;
+                let acHours = 0;
+                if (stationsAvail) {
+                    const refTime = this.state.obsRainRequestedTime;
+                    if (targetTime instanceof Date && Number.isFinite(targetTime.getTime()) &&
+                        refTime instanceof Date && Number.isFinite(refTime.getTime())) {
+                        const hourDiff = Math.round((targetTime.getTime() - refTime.getTime()) / 3600000);
+                        acHours = Math.max(0, Math.min(24, 23 - hourDiff));
+                    } else {
+                        acHours = 22; // fallback
+                    }
+                }
+
+                // When obs window covers 0 hours (out of range or no stations),
+                // use the full 24-hour forecast window instead of defaulting to zero.
+                // Only substitute with observed accumulation when obs data is available.
+                const obsAccum = acHours > 0 ? this.getObservedRainAccumByHour(locName, targetTime, 22) : null;
+                const fcstAccum = acHours === 0
+                    ? this.getNCDRForecastAccumFor24hMode(locName, idx, 24)
+                    : this.getNCDRForecastAccumFor24hMode(locName, idx);
 
                 if (!Number.isFinite(obsAccum) && !Number.isFinite(fcstAccum)) {
                     return { num: 0, str: "-", valid: false };
