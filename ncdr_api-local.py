@@ -110,7 +110,7 @@ def get_csrf_token():
     return jsonify({'csrf_token': generate_csrf()})
 
 @app.route('/ncdr/EnG01', methods=['POST'])
-@limiter.limit("2 per minute")
+@limiter.limit("10 per minute")
 def get_ensemble_g01():
     user_format = request.form.get('format', 'csv').lower()
 
@@ -158,7 +158,7 @@ def get_ensemble_g01():
             return jsonify({'error': 'Failed to fetch JSON data', 'details': str(e)}), 500
 
 @app.route('/ncdr/En05km', methods=['POST'])
-@limiter.limit("2 per minute")
+@limiter.limit("30 per minute")
 def get_ensemble05km():
     headers = {
         'Authorization': f'Basic {API_TOKEN_WIND}'
