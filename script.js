@@ -48,9 +48,9 @@ const QPF_COLORS = ['#EDF9FE', '#C2C2C2', '#9CFCFF', '#03C8FF', '#059BFF', '#036
 const RAIN_1H_THRESHOLDS = [0, 40, 100, 200];
 const RAIN_3H_THRESHOLDS = [0, 80, 100, 200, 500];
 const RAIN_24H_THRESHOLDS = [0, 80, 200, 350, 500];
-const RAIN_1H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636'];
-const RAIN_3H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636', '#f934b4'];
-const RAIN_24H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636', '#f934b4'];
+const RAIN_1H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#ff8000', '#ff0000'];
+const RAIN_3H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#ff8000', '#ff0000', '#d600cc'];
+const RAIN_24H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#ff8000', '#ff0000', '#d600cc'];
 const VARIABLE_MAPPING = {
     "溫度": { 
         key: "溫度",
