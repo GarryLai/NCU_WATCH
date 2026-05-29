@@ -45,7 +45,12 @@ const UNIT_MAPPING = {
 
 const QPF_THRESHOLDS = [0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70, 90, 110, 130, 150, 200, 300];
 const QPF_COLORS = ['#EDF9FE', '#C2C2C2', '#9CFCFF', '#03C8FF', '#059BFF', '#0363FF', '#059902', '#39FF03', '#FFFB03', '#FFC800', '#FF9500', '#FF0000', '#CC0000', '#990000', '#960099', '#C900CC', '#FB00FF', '#FDC9FF'];
-
+const RAIN_1H_THRESHOLDS = [0, 40, 100, 200];
+const RAIN_3H_THRESHOLDS = [0, 80, 100, 200, 500];
+const RAIN_24H_THRESHOLDS = [0, 80, 200, 350, 500];
+const RAIN_1H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636'];
+const RAIN_3H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636', '#f934b4'];
+const RAIN_24H_COLORS = ['#FFFFFF', '#03C8FF', '#ffe88c', '#f99831', '#ff3636', '#f934b4'];
 const VARIABLE_MAPPING = {
     "溫度": { 
         key: "溫度",
@@ -213,14 +218,44 @@ const Utils = {
         return { num: found ? maxVal : 0, str: found ? maxStr : "-", valid: found };
     },
 
-    getColor(val, varKey, subVarKey) {
+    getColor(val, varKey, subVarKey, options = {}) {
         if (!VARIABLE_MAPPING[varKey]) return '#cccccc';
         const config = VARIABLE_MAPPING[varKey];
         const colors = config.colors;
         const thresholds = config.thresholds;
 
+        const aggMode = options.aggMode || null;
+
         // QPF Logic: value matches a specific discrete bin color
-        if (varKey === "定量降水預報" || varKey === "NCDR系集降雨預報") {
+        if (varKey === "NCDR系集降雨預報") {
+            let rainThresholds = RAIN_1H_THRESHOLDS;
+            let rainColors = RAIN_1H_COLORS;
+
+            if (aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
+                rainThresholds = RAIN_24H_THRESHOLDS;
+                rainColors = RAIN_24H_COLORS;
+            } else if (
+                aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
+                || aggMode === CONFIG.AGGREGATION.HOURS_3
+                || aggMode === CONFIG.AGGREGATION.HOURS_6
+            ) {
+                rainThresholds = RAIN_3H_THRESHOLDS;
+                rainColors = RAIN_3H_COLORS;
+            }
+
+            if (val === 0) return rainColors[0];
+
+            let idx = rainThresholds.indexOf(val);
+            if (idx !== -1) {
+                return rainColors[idx + 1] || '#cccccc';
+            }
+
+            let tIdx = rainThresholds.findIndex(t => val < t);
+            if (tIdx === -1) tIdx = rainThresholds.length;
+            return rainColors[tIdx] || '#cccccc';
+        }
+
+        if (varKey === "定量降水預報") {
             if (val === 0) return colors[0];
             
             // Check exact match first
@@ -1750,7 +1785,9 @@ const App = {
                 td.textContent = str;
                 if (valid) {
                     // Added '80' transparency to match original UX
-                    const baseColor = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar);
+                    const baseColor = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar, {
+                        aggMode: this.state.aggMode
+                    });
                     td.style.backgroundColor = baseColor + '80';
                 } else {
                     td.style.backgroundColor = '#cccccc'; // Match default
@@ -1887,7 +1924,9 @@ const App = {
                 }
                 
                 if (valid) {
-                    color = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar);
+                    color = Utils.getColor(num, this.state.currentVar, this.state.currentSubVar, {
+                        aggMode: this.state.aggMode
+                    });
                     label = str;
                 }
             }
@@ -1942,6 +1981,54 @@ const App = {
     renderLegend() {
         const legend = document.getElementById('map-legend');
         if (!legend) return;
+
+        if (this.state.currentVar === "NCDR系集降雨預報") {
+            legend.style.display = 'block';
+
+            const makeCell = (color, text, withBorder = false) =>
+                `<div class="l-cell"><div class="l-icon" style="flex: 0.3"><i style="background: ${color};${withBorder ? ' border: 1px solid #ccc;' : ''}"></i></div><div class="l-lvl" style="text-align: left;">${text}</div></div>`;
+
+            const formatLegendText = (threshold, lvl) =>
+                `<span style="display:inline-block; width:4.6em; text-align:left;">≥ ${threshold}</span><span style="display:inline-block; margin-left:0.6em; text-align:left;">${lvl}</span>`;
+
+            let thresholds = RAIN_1H_THRESHOLDS;
+            let colors = RAIN_1H_COLORS;
+            let modeTitle = '逐1小時 預報分級 (mm)';
+
+            if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
+                thresholds = RAIN_24H_THRESHOLDS;
+                colors = RAIN_24H_COLORS;
+                modeTitle = '逐24小時 預報分級 (mm)';
+            } else if (
+                this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX
+                || this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
+                || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
+            ) {
+                thresholds = RAIN_3H_THRESHOLDS;
+                colors = RAIN_3H_COLORS;
+                modeTitle = '逐3小時 預報分級 (mm)';
+            } else if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX) {
+                thresholds = RAIN_1H_THRESHOLDS;
+                colors = RAIN_1H_COLORS;
+                modeTitle = '逐1小時 預報分級 (mm)';
+            }
+
+            const severityLabels = ['降雨注意', '大雨', '豪雨', '大豪雨', '超大豪雨'];
+            const levelCells = thresholds.map((threshold, idx) => {
+                const lvl = severityLabels[idx] || `等級${idx + 1}`;
+                const c = colors[idx + 1] || colors[colors.length - 1];
+                return makeCell(c, formatLegendText(threshold, lvl));
+            }).join('');
+
+            legend.innerHTML = `
+            <div class="l-group" style="border-color:#90A4AE; color:#455A64; margin-bottom: 0.5em;">
+                <div class="l-group-title">${modeTitle}</div>
+                <div class="l-grid" style="grid-template-columns: 1fr; row-gap: 0.35em;">
+                    ${levelCells}
+                </div>
+            </div>`;
+            return;
+        }
         
         if ((this.state.currentVar === "風速" || this.state.currentVar === "NCDR系集十米風")
             && this.state.currentSubVar === "BeaufortScale") {
