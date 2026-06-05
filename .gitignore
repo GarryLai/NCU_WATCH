@@ -5,3 +5,11 @@ app.py
 cache/
 static/
 templates/
+*.JSON
+*.csv
+*.json
+__pycache__/
+*.png
+*.txt
+CWA*
+plot_ncdr_data.py
