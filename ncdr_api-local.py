@@ -196,6 +196,9 @@ def get_ensemble05km():
         response.raise_for_status()
         json_data = json.loads(response.text.lstrip('\ufeff'))  # Remove BOM if present
         rec_date_time = json_data.get('RecDateTime', 'unknown')
+        data = json_data.get('Data', [])
+        if data is None or (isinstance(data, list) and len(data) == 0):
+            return jsonify({'error': 'Data is empty'}), 500
     except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Failed to get REC_DATE_TIME from JSON', 'details': str(e)}), 500
 
