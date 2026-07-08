@@ -166,6 +166,34 @@ label {
     user-select: none;
 }
 
+.ncdr-rain-none-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ncdr-rain-none-nav button {
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: #ffffff;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.ncdr-rain-none-nav button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.ncdr-rain-window-range {
+    min-width: 78px;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    text-align: center;
+}
+
 /* ==========================================================================
    4. Table Styles (Responsive Full Screen)
    ========================================================================== */

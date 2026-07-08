@@ -29,7 +29,9 @@ const CONFIG = {
         HOURS_3: '3hours',
         HOURS_6: '6hours'
     },
-    OBS_RAIN_LATEST_API: '/ncdr/obs_rain/latest'
+    OBS_RAIN_LATEST_API: '/ncdr/obs_rain/latest',
+    NCDR_RAIN_NONE_MAX_HOURS: 24,
+    NCDR_RAIN_NONE_SHIFT_HOURS: 6
 };
 
 const NAME_MAPPING = {
@@ -328,9 +330,10 @@ const Utils = {
 const TimeManager = {
     cache: new Map(),
 
-    generateGroups(timeStrings, mode, interval = 1) {
+    generateGroups(timeStrings, mode, interval = 1, options = {}) {
+        const windowShiftHours = Number(options.windowShiftHours) || 0;
         // Cache key based on input parameters
-        const cacheKey = `${mode}-${interval}-${timeStrings.length}-${timeStrings[0]}`;
+        const cacheKey = `${mode}-${interval}-${windowShiftHours}-${timeStrings.length}-${timeStrings[0]}`;
         if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
 
         // QPF Special Handling (Fake Time Strings)
@@ -367,11 +370,28 @@ const TimeManager = {
             return groups;
         }
 
-        // 1. Define Filter Range (Today Noon -> Tomorrow Noon)
+        // 1. Define Filter Range (Dynamic 24h window aligned to 6-hour switch points)
         const now = new Date();
-        const startFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0); 
+        const startFilter = new Date(now);
+        startFilter.setMinutes(0, 0, 0);
+
+        const currentHour = now.getHours();
+        const nextBoundaryHour = Math.ceil(currentHour / 6) * 6;
+
+        if (nextBoundaryHour >= 24) {
+            startFilter.setDate(startFilter.getDate() + 1);
+            startFilter.setHours(0, 0, 0, 0);
+        } else {
+            startFilter.setHours(nextBoundaryHour, 0, 0, 0);
+        }
+
         const endFilter = new Date(startFilter);
-        endFilter.setDate(endFilter.getDate() + 1);
+        endFilter.setHours(endFilter.getHours() + 24);
+
+        if (windowShiftHours !== 0) {
+            startFilter.setHours(startFilter.getHours() + windowShiftHours);
+            endFilter.setHours(endFilter.getHours() + windowShiftHours);
+        }
 
         const groups = [];
         const parsedDates = timeStrings.map(t => new Date(t));
@@ -388,6 +408,7 @@ const TimeManager = {
                     type: 'single',
                     indices: [i],
                     label: label,
+                    periodLabel: hh,
                     timestamp: d.getTime(),
                     dateKey: `${d.getFullYear()}/${mm}/${dd}`
                 });
@@ -396,7 +417,7 @@ const TimeManager = {
             return groups;
         }
 
-        // 2.5 Mode: Hourly points within today 12 -> tomorrow 12
+        // 2.5 Mode: Hourly points within dynamic 24h window
         if (mode === CONFIG.AGGREGATION.HOURLY_DAY) {
             parsedDates.forEach((d, i) => {
                 const t = d.getTime();
@@ -475,7 +496,7 @@ const TimeManager = {
             buckets.get(key).indices.push(index);
         });
 
-        // Convert buckets to array and filter for Time Window (Today Noon -> Tomorrow Noon)
+        // Convert buckets to array and filter for dynamic 24h window
         const result = Array.from(buckets.values())
             .filter(item => {
                 const t = item.timestamp; 
@@ -695,6 +716,9 @@ const App = {
         ncdrRainEnsemble: 'G01',
         ncdrRainRawSeries: new Map(),
         ncdrRainCumSeries: new Map(),
+        ncdrRainNoneWindowStart: 0,
+        ncdrRainNoneWindowTotal: 0,
+        ncdrRainWindowShiftHours: 0,
         obsRainRequestedTime: null,
         obsRain24hByTown: new Map(),
         obsRainSourceUrl: null
@@ -713,7 +737,11 @@ const App = {
         tableHeader: document.getElementById('table-header'),
         tableBody: document.getElementById('table-body'),
         timeDisplay: document.getElementById('current-time-display'),
-        mapTimeDisplay: document.getElementById('map-time-display')
+        mapTimeDisplay: document.getElementById('map-time-display'),
+        ncdrRainNoneNav: document.getElementById('ncdr-rain-none-nav'),
+        ncdrRainPrev6Btn: document.getElementById('ncdr-rain-prev-6-btn'),
+        ncdrRainNext6Btn: document.getElementById('ncdr-rain-next-6-btn'),
+        ncdrRainWindowRange: document.getElementById('ncdr-rain-window-range')
     },
 
     init() {
@@ -729,6 +757,109 @@ const App = {
         this.ui.tableBody = document.getElementById('table-body');
         this.ui.timeDisplay = document.getElementById('current-time-display');
         this.ui.mapTimeDisplay = document.getElementById('map-time-display');
+        this.ui.ncdrRainNoneNav = document.getElementById('ncdr-rain-none-nav');
+        this.ui.ncdrRainPrev6Btn = document.getElementById('ncdr-rain-prev-6-btn');
+        this.ui.ncdrRainNext6Btn = document.getElementById('ncdr-rain-next-6-btn');
+        this.ui.ncdrRainWindowRange = document.getElementById('ncdr-rain-window-range');
+    },
+
+    isNCDRRainNoneMode() {
+        return this.state.currentVar === "NCDR系集降雨預報"
+            && this.state.aggMode === CONFIG.AGGREGATION.NONE;
+    },
+
+    isNCDRRainMode() {
+        return this.state.currentVar === "NCDR系集降雨預報";
+    },
+
+    applyNCDRRainNoneWindow(displayItems) {
+        const items = Array.isArray(displayItems) ? displayItems : [];
+
+        if (!this.isNCDRRainNoneMode()) {
+            this.state.ncdrRainNoneWindowStart = 0;
+            this.state.ncdrRainNoneWindowTotal = 0;
+            return items;
+        }
+
+        this.state.ncdrRainNoneWindowTotal = items.length;
+        const windowSize = CONFIG.NCDR_RAIN_NONE_MAX_HOURS;
+
+        if (items.length <= windowSize) {
+            this.state.ncdrRainNoneWindowStart = 0;
+            return items;
+        }
+
+        const maxStart = items.length - windowSize;
+        const start = Math.min(Math.max(0, this.state.ncdrRainNoneWindowStart), maxStart);
+        this.state.ncdrRainNoneWindowStart = start;
+
+        return items.slice(start, start + windowSize);
+    },
+
+    updateNCDRRainNoneNavControls() {
+        const nav = this.ui.ncdrRainNoneNav;
+        const prevBtn = this.ui.ncdrRainPrev6Btn;
+        const nextBtn = this.ui.ncdrRainNext6Btn;
+
+        if (!nav || !prevBtn || !nextBtn) return;
+
+        if (!this.isNCDRRainMode()) {
+            nav.style.display = 'none';
+            return;
+        }
+
+        nav.style.display = 'inline-flex';
+
+        if (!this.isNCDRRainNoneMode()) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            if (this.ui.ncdrRainWindowRange) {
+                this.ui.ncdrRainWindowRange.textContent = '';
+            }
+            return;
+        }
+
+        const total = this.state.ncdrRainNoneWindowTotal;
+        const windowSize = CONFIG.NCDR_RAIN_NONE_MAX_HOURS;
+        const maxStart = Math.max(0, total - windowSize);
+        const start = Math.min(Math.max(0, this.state.ncdrRainNoneWindowStart), maxStart);
+        this.state.ncdrRainNoneWindowStart = start;
+
+        prevBtn.disabled = start <= 0;
+        nextBtn.disabled = start >= maxStart;
+
+        if (this.ui.ncdrRainWindowRange) {
+            if (total <= 0) {
+                this.ui.ncdrRainWindowRange.textContent = '0/0';
+            } else {
+                const from = start + 1;
+                const to = Math.min(total, start + Math.min(windowSize, total - start));
+                this.ui.ncdrRainWindowRange.textContent = `${from}-${to} / ${total}`;
+            }
+        }
+    },
+
+    shiftNCDRRainNoneWindow(offsetHours) {
+        if (!this.isNCDRRainMode()) return;
+
+        if (!this.isNCDRRainNoneMode()) {
+            this.state.ncdrRainWindowShiftHours += offsetHours;
+            this.state.timeIndex = -1;
+            this.updateData();
+            return;
+        }
+
+        const total = this.state.ncdrRainNoneWindowTotal;
+        const windowSize = CONFIG.NCDR_RAIN_NONE_MAX_HOURS;
+        if (total <= windowSize) return;
+
+        const maxStart = total - windowSize;
+        const nextStart = Math.min(maxStart, Math.max(0, this.state.ncdrRainNoneWindowStart + offsetHours));
+        if (nextStart === this.state.ncdrRainNoneWindowStart) return;
+
+        this.state.ncdrRainNoneWindowStart = nextStart;
+        this.state.timeIndex = -1;
+        this.updateData();
     },
 
     initMap() {
@@ -1419,6 +1550,8 @@ const App = {
         document.getElementById('variable-select').addEventListener('change', async e => {
             this.state.currentVar = e.target.value;
             this.updateAggregationModeOptions();
+            this.state.ncdrRainNoneWindowStart = 0;
+            this.state.ncdrRainWindowShiftHours = 0;
             
             if (this.state.currentVar === "定量降水預報") {
                 document.getElementById('aggregation-mode-select').disabled = true;
@@ -1485,6 +1618,8 @@ const App = {
                     this.injectNCDRRainData(parsedRain);
                     this.state.ncdrRainLoaded = true;
                 }
+                this.state.ncdrRainNoneWindowStart = 0;
+                this.state.ncdrRainWindowShiftHours = 0;
                 this.state.timeIndex = -1;
                 this.updateData();
             });
@@ -1492,9 +1627,23 @@ const App = {
 
         document.getElementById('aggregation-mode-select').addEventListener('change', e => {
             this.state.aggMode = e.target.value;
+            this.state.ncdrRainNoneWindowStart = 0;
+            this.state.ncdrRainWindowShiftHours = 0;
             this.state.timeIndex = -1; 
             this.updateData();
         });
+
+        if (this.ui.ncdrRainPrev6Btn) {
+            this.ui.ncdrRainPrev6Btn.addEventListener('click', () => {
+                this.shiftNCDRRainNoneWindow(-CONFIG.NCDR_RAIN_NONE_SHIFT_HOURS);
+            });
+        }
+
+        if (this.ui.ncdrRainNext6Btn) {
+            this.ui.ncdrRainNext6Btn.addEventListener('click', () => {
+                this.shiftNCDRRainNoneWindow(CONFIG.NCDR_RAIN_NONE_SHIFT_HOURS);
+            });
+        }
 
         document.getElementById('download-btn').addEventListener('click', () => {
             const mainElement = document.querySelector('main');
@@ -1537,6 +1686,7 @@ const App = {
 
         const firstLoc = this.state.locations[0];
         const element = firstLoc.data[config.key];
+        let generatedItems = [];
         
         if (element && element.Time) {
             const rawTimes = element.Time.map(t => t.StartTime || t.DataTime);
@@ -1558,14 +1708,28 @@ const App = {
                 if (diff >= 3 * 3600 * 1000) interval = 3;
             }
 
-            this.state.currentDisplayItems = TimeManager.generateGroups(
+            const windowShiftHours = (
+                this.state.currentVar === "NCDR系集降雨預報"
+                && this.state.aggMode !== CONFIG.AGGREGATION.NONE
+            )
+                ? this.state.ncdrRainWindowShiftHours
+                : 0;
+
+            generatedItems = TimeManager.generateGroups(
                 rawTimes, 
                 normalizedMode, 
-                interval
+                interval,
+                { windowShiftHours }
             );
-        } else {
-            this.state.currentDisplayItems = [];
         }
+
+        this.state.currentDisplayItems = this.applyNCDRRainNoneWindow(generatedItems);
+
+        if (this.state.timeIndex >= this.state.currentDisplayItems.length) {
+            this.state.timeIndex = -1;
+        }
+
+        this.updateNCDRRainNoneNavControls();
 
         this.renderTable();
         this.renderMap();
@@ -1689,7 +1853,8 @@ const App = {
             this.state.aggMode === 'QPF'
             || this.state.currentVar === "定量降水預報"
             ||
-            this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
+            this.state.aggMode === CONFIG.AGGREGATION.NONE
+            || this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_MAX
@@ -1953,6 +2118,8 @@ const App = {
         // Easier: Re-render table headers? No, expensive.
         // DOM Manipulation:
         if (
+            this.state.aggMode === CONFIG.AGGREGATION.NONE
+            ||
             this.state.aggMode === CONFIG.AGGREGATION.HOURS_3
             || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6
             || this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY
