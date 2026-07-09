@@ -194,6 +194,82 @@ label {
     text-align: center;
 }
 
+.ncdr-max-order-switch {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.ncdr-max-order-switch button {
+    padding: 5px 10px;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    background-color: #ffffff;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.ncdr-max-order-switch button:last-child {
+    border-right: none;
+}
+
+.ncdr-max-order-switch button.active {
+    background-color: var(--primary-color);
+    color: #ffffff;
+}
+
+.ncdr-max-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(28, 36, 46, 0.38);
+}
+
+.ncdr-max-loading-modal {
+    width: min(420px, 88vw);
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+}
+
+.ncdr-max-loading-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.ncdr-max-loading-text {
+    margin-top: 8px;
+    font-size: 0.95rem;
+    color: var(--text-main);
+}
+
+.ncdr-max-loading-track {
+    margin-top: 12px;
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #e9ecef;
+    overflow: hidden;
+}
+
+.ncdr-max-loading-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3498db 0%, #2c7be5 100%);
+    transition: width 0.2s ease;
+}
+
 /* ==========================================================================
    4. Table Styles (Responsive Full Screen)
    ========================================================================== */

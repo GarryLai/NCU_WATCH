@@ -714,8 +714,11 @@ const App = {
         ncdrObsRainLoaded: false,
         ncdrRainBaseTime: null,
         ncdrRainEnsemble: 'G01',
+        ncdrRainMaxAggregationOrder: 'maxfirst',
         ncdrRainRawSeries: new Map(),
         ncdrRainCumSeries: new Map(),
+        ncdrRainMaxMemberRawByTown: {},
+        ncdrRainMaxMemberCumByTown: {},
         ncdrRainNoneWindowStart: 0,
         ncdrRainNoneWindowTotal: 0,
         ncdrRainWindowShiftHours: 0,
@@ -741,7 +744,13 @@ const App = {
         ncdrRainNoneNav: document.getElementById('ncdr-rain-none-nav'),
         ncdrRainPrev6Btn: document.getElementById('ncdr-rain-prev-6-btn'),
         ncdrRainNext6Btn: document.getElementById('ncdr-rain-next-6-btn'),
-        ncdrRainWindowRange: document.getElementById('ncdr-rain-window-range')
+        ncdrRainWindowRange: document.getElementById('ncdr-rain-window-range'),
+        ncdrMaxOrderSwitch: document.getElementById('ncdr-max-order-switch'),
+        ncdrMaxOrderMaxBtn: document.getElementById('ncdr-max-order-max-btn'),
+        ncdrMaxOrderSumBtn: document.getElementById('ncdr-max-order-sum-btn'),
+        ncdrMaxLoadingOverlay: document.getElementById('ncdr-max-loading-overlay'),
+        ncdrMaxLoadingText: document.getElementById('ncdr-max-loading-text'),
+        ncdrMaxLoadingBar: document.getElementById('ncdr-max-loading-bar')
     },
 
     init() {
@@ -761,6 +770,12 @@ const App = {
         this.ui.ncdrRainPrev6Btn = document.getElementById('ncdr-rain-prev-6-btn');
         this.ui.ncdrRainNext6Btn = document.getElementById('ncdr-rain-next-6-btn');
         this.ui.ncdrRainWindowRange = document.getElementById('ncdr-rain-window-range');
+        this.ui.ncdrMaxOrderSwitch = document.getElementById('ncdr-max-order-switch');
+        this.ui.ncdrMaxOrderMaxBtn = document.getElementById('ncdr-max-order-max-btn');
+        this.ui.ncdrMaxOrderSumBtn = document.getElementById('ncdr-max-order-sum-btn');
+        this.ui.ncdrMaxLoadingOverlay = document.getElementById('ncdr-max-loading-overlay');
+        this.ui.ncdrMaxLoadingText = document.getElementById('ncdr-max-loading-text');
+        this.ui.ncdrMaxLoadingBar = document.getElementById('ncdr-max-loading-bar');
     },
 
     isNCDRRainNoneMode() {
@@ -770,6 +785,42 @@ const App = {
 
     isNCDRRainMode() {
         return this.state.currentVar === "NCDR系集降雨預報";
+    },
+
+    isNCDRMaxEnsembleMode() {
+        return this.isNCDRRainMode() && this.state.ncdrRainEnsemble === 'MAX';
+    },
+
+    isNCDRMaxOrderSwitchApplicableMode() {
+        return [
+            CONFIG.AGGREGATION.HOURLY_3H_MAX,
+            CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX,
+            CONFIG.AGGREGATION.HOURS_3,
+            CONFIG.AGGREGATION.HOURS_6
+        ].includes(this.state.aggMode);
+    },
+
+    shouldShowNCDRMaxOrderSwitch() {
+        return this.isNCDRMaxEnsembleMode() && this.isNCDRMaxOrderSwitchApplicableMode();
+    },
+
+    isNCDRSumFirstModeEnabled() {
+        return this.shouldShowNCDRMaxOrderSwitch() && this.state.ncdrRainMaxAggregationOrder === 'sumfirst';
+    },
+
+    updateNCDRMaxOrderSwitchUI() {
+        const wrap = this.ui.ncdrMaxOrderSwitch;
+        if (!wrap) return;
+
+        const show = this.shouldShowNCDRMaxOrderSwitch();
+        wrap.style.display = show ? 'inline-flex' : 'none';
+
+        if (this.ui.ncdrMaxOrderMaxBtn) {
+            this.ui.ncdrMaxOrderMaxBtn.classList.toggle('active', this.state.ncdrRainMaxAggregationOrder === 'maxfirst');
+        }
+        if (this.ui.ncdrMaxOrderSumBtn) {
+            this.ui.ncdrMaxOrderSumBtn.classList.toggle('active', this.state.ncdrRainMaxAggregationOrder === 'sumfirst');
+        }
     },
 
     applyNCDRRainNoneWindow(displayItems) {
@@ -947,7 +998,135 @@ const App = {
         }
     },
 
-    async fetchNCDRData(type) {
+    getNCDRRainMemberEnsembles() {
+        return ['G01', ...Array.from({ length: 20 }, (_, i) => `N${String(i).padStart(2, '0')}`)];
+    },
+
+    formatProgressBar(done, total, width = 20) {
+        const safeTotal = Math.max(1, Number(total) || 1);
+        const safeDone = Math.max(0, Math.min(safeTotal, Number(done) || 0));
+        const filled = Math.round((safeDone / safeTotal) * width);
+        const empty = Math.max(0, width - filled);
+        return `[${'#'.repeat(filled)}${'-'.repeat(empty)}]`;
+    },
+
+    showNCDRRainMaxOverlay() {
+        if (this.ui.ncdrMaxLoadingOverlay) {
+            this.ui.ncdrMaxLoadingOverlay.style.display = 'flex';
+        }
+    },
+
+    hideNCDRRainMaxOverlay() {
+        if (this.ui.ncdrMaxLoadingOverlay) {
+            this.ui.ncdrMaxLoadingOverlay.style.display = 'none';
+        }
+        if (this.ui.ncdrMaxLoadingBar) {
+            this.ui.ncdrMaxLoadingBar.style.width = '0%';
+        }
+    },
+
+    updateNCDRRainMaxProgress(processed, total, failedCount, currentEnsemble = null) {
+        const safeTotal = Math.max(1, Number(total) || 1);
+        const safeProcessed = Math.max(0, Math.min(safeTotal, Number(processed) || 0));
+        const percent = Math.round((safeProcessed / safeTotal) * 100);
+        const suffix = currentEnsemble ? `，目前 ${currentEnsemble}` : '';
+
+        if (this.ui.timeDisplay) {
+            this.ui.timeDisplay.textContent = `MAX載入中：${safeProcessed}/${safeTotal}，失敗 ${failedCount}${suffix}`;
+        }
+
+        if (this.ui.ncdrMaxLoadingText) {
+            this.ui.ncdrMaxLoadingText.textContent = `${safeProcessed}/${safeTotal} (${percent}%)，失敗 ${failedCount}${suffix}`;
+        }
+
+        if (this.ui.ncdrMaxLoadingBar) {
+            this.ui.ncdrMaxLoadingBar.style.width = `${percent}%`;
+        }
+    },
+
+    mergeNCDRRainEnsembleMax(parsedList) {
+        if (!Array.isArray(parsedList) || parsedList.length === 0) return null;
+
+        const hourIds = Array.from(new Set(
+            parsedList.flatMap(item => Array.isArray(item?.hourIds) ? item.hourIds : [])
+        )).sort((a, b) => Number(a) - Number(b));
+
+        if (hourIds.length === 0) return null;
+
+        let baseTime = null;
+        for (const parsed of parsedList) {
+            if (parsed?.baseTime instanceof Date && Number.isFinite(parsed.baseTime.getTime())) {
+                baseTime = parsed.baseTime;
+                break;
+            }
+        }
+
+        const townHourlyRainRaw = {};
+        const townHourlyRainCum = {};
+        const memberRawSeriesByTown = {};
+        const memberCumSeriesByTown = {};
+
+        this.state.locations.forEach(loc => {
+            const townName = loc.name;
+            townHourlyRainRaw[townName] = {};
+            townHourlyRainCum[townName] = {};
+
+            const memberRawSeries = parsedList.map(parsed => {
+                return hourIds.map(hh => {
+                    const hourKey = `H${hh}`;
+                    const val = parsed?.townHourlyRainRaw?.[townName]?.[hourKey];
+                    return Number.isFinite(val) ? Math.max(val, 0) : null;
+                });
+            });
+
+            const memberCumSeries = memberRawSeries.map(rawSeries => {
+                const cum = [];
+                let memberRunning = 0;
+                rawSeries.forEach(val => {
+                    if (Number.isFinite(val)) memberRunning += val;
+                    cum.push(Number.isFinite(val) ? memberRunning : null);
+                });
+                return cum;
+            });
+
+            memberRawSeriesByTown[townName] = memberRawSeries;
+            memberCumSeriesByTown[townName] = memberCumSeries;
+
+            let running = 0;
+            hourIds.forEach((hh, hIdx) => {
+                const hourKey = `H${hh}`;
+                let maxRaw = null;
+
+                memberRawSeries.forEach(rawSeries => {
+                    const val = rawSeries[hIdx];
+                    if (Number.isFinite(val) && (maxRaw == null || val > maxRaw)) {
+                        maxRaw = val;
+                    }
+                });
+
+                if (Number.isFinite(maxRaw)) {
+                    const nonNegMax = Math.max(maxRaw, 0);
+                    running += nonNegMax;
+                    townHourlyRainRaw[townName][hourKey] = nonNegMax;
+                    townHourlyRainCum[townName][hourKey] = running;
+                } else {
+                    townHourlyRainRaw[townName][hourKey] = null;
+                    townHourlyRainCum[townName][hourKey] = null;
+                }
+            });
+        });
+
+        return {
+            baseTime,
+            hourIds,
+            townHourlyRainRaw,
+            townHourlyRainCum,
+            memberRawSeriesByTown,
+            memberCumSeriesByTown
+        };
+    },
+
+    async fetchNCDRRainByEnsemble(ensemble, suppressAlert = false) {
         if (!this.state.csrfToken) await this.fetchCsrfToken();
 
         const formData = new FormData();
@@ -955,15 +1134,108 @@ const App = {
         formData.append('csrf_token', this.state.csrfToken);
 
         let url = '/ncdr/En05km';
+        if (ensemble === 'G01') {
+            url = '/ncdr/EnG01';
+        } else {
+            formData.append('variable', 'raintot');
+            formData.append('number', ensemble);
+        }
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': this.state.csrfToken
+                }
+            });
+
+            if (!res.ok) {
+                if (!suppressAlert) {
+                    if (res.status === 429) {
+                        alert("請求過於頻繁，請稍後再試");
+                    } else {
+                        alert("NCDR資料載入失敗");
+                    }
+                }
+                const errorData = await res.json().catch(() => ({}));
+                console.error(`NCDR Rain Fetch Error [${ensemble}]`, errorData);
+                return null;
+            }
+
+            const csvText = await res.text();
+            return this.parseNCDRcsv(csvText, 'rain', ensemble);
+        } catch (e) {
+            console.error(`NCDR Rain Fetch Error [${ensemble}]`, e);
+            if (!suppressAlert) {
+                alert("NCDR資料載入失敗");
+            }
+            return null;
+        }
+    },
+
+    async fetchNCDRRainMaxData() {
+        const ensembles = this.getNCDRRainMemberEnsembles();
+        const parsedList = [];
+        const failedEnsembles = [];
+        const total = ensembles.length;
+
+        this.showNCDRRainMaxOverlay();
+
+        try {
+            this.updateNCDRRainMaxProgress(0, total, 0);
+
+            for (let i = 0; i < ensembles.length; i++) {
+                const ensemble = ensembles[i];
+                this.updateNCDRRainMaxProgress(i, total, failedEnsembles.length, ensemble);
+
+                const parsed = await this.fetchNCDRRainByEnsemble(ensemble, true);
+                if (!parsed) {
+                    failedEnsembles.push(ensemble);
+                    this.updateNCDRRainMaxProgress(i + 1, total, failedEnsembles.length);
+                    continue;
+                }
+
+                parsedList.push(parsed);
+                this.updateNCDRRainMaxProgress(i + 1, total, failedEnsembles.length);
+            }
+
+            if (parsedList.length === 0) {
+                this.state.ncdrRainMaxMemberRawByTown = {};
+                this.state.ncdrRainMaxMemberCumByTown = {};
+                alert("MAX系集載入失敗：所有系集皆無法下載");
+                return null;
+            }
+
+            const merged = this.mergeNCDRRainEnsembleMax(parsedList);
+            this.state.ncdrRainMaxMemberRawByTown = merged?.memberRawSeriesByTown || {};
+            this.state.ncdrRainMaxMemberCumByTown = merged?.memberCumSeriesByTown || {};
+            return merged;
+        } finally {
+            this.hideNCDRRainMaxOverlay();
+        }
+    },
+
+    async fetchNCDRData(type) {
         if (type === 'rain') {
             const ensemble = this.state.ncdrRainEnsemble;
-            if (ensemble === 'G01') {
-                url = '/ncdr/EnG01';
-            } else {
-                formData.append('variable', 'raintot');
-                formData.append('number', ensemble);
+            if (ensemble === 'MAX') {
+                return this.fetchNCDRRainMaxData();
             }
-        } else if (type === 'wind') {
+
+            this.state.ncdrRainMaxMemberRawByTown = {};
+            this.state.ncdrRainMaxMemberCumByTown = {};
+            return this.fetchNCDRRainByEnsemble(ensemble);
+        }
+
+        if (!this.state.csrfToken) await this.fetchCsrfToken();
+
+        const formData = new FormData();
+        formData.append('format', 'csv');
+        formData.append('csrf_token', this.state.csrfToken);
+
+        let url = '/ncdr/En05km';
+        if (type === 'wind') {
             formData.append('variable', 'uv10');
             formData.append('number', 'N00');
         } else {
@@ -1106,8 +1378,7 @@ const App = {
         return maxVal;
     },
 
-    getNCDRForecastAccumFor24hMode(locName, idx, hoursOverride) {
-        const rawSeries = this.state.ncdrRainRawSeries.get(locName);
+    getSeriesAccumFor24hMode(rawSeries, idx, hoursOverride) {
         if (!rawSeries || !Number.isInteger(idx)) return null;
 
         const endIdx = idx + 1;
@@ -1134,8 +1405,13 @@ const App = {
 
         return found ? sum : null;
     },
+
+    getNCDRForecastAccumFor24hMode(locName, idx, hoursOverride) {
+        const rawSeries = this.state.ncdrRainRawSeries.get(locName);
+        return this.getSeriesAccumFor24hMode(rawSeries, idx, hoursOverride);
+    },
     
-    parseNCDRcsv(csvText, type) {
+    parseNCDRcsv(csvText, type, rainEnsemble = null) {
         const lines = csvText.split('\n').map(line => line.replace(/\r/g, ''));
         if (lines.length < 3) return null;
 
@@ -1148,7 +1424,7 @@ const App = {
         }
 
         if (type === 'rain') {
-            const directHourly = this.state.ncdrRainEnsemble === 'G01';
+            const directHourly = (rainEnsemble || this.state.ncdrRainEnsemble) === 'G01';
             return this.parseNCDRRainCsv(headers, dataLines, recDateTimeRaw, directHourly);
         }
 
@@ -1449,7 +1725,7 @@ const App = {
         // Initialize ensemble select options
         const ensembleSel = document.getElementById('ncdr-rain-ensemble-select');
         if (ensembleSel) {
-            const options = ['G01', ...Array.from({ length: 20 }, (_, i) => `N${String(i).padStart(2, '0')}`)];
+            const options = ['MAX', ...this.getNCDRRainMemberEnsembles()];
             ensembleSel.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
             ensembleSel.value = this.state.ncdrRainEnsemble;
         }
@@ -1625,6 +1901,24 @@ const App = {
             });
         }
 
+        if (this.ui.ncdrMaxOrderMaxBtn) {
+            this.ui.ncdrMaxOrderMaxBtn.addEventListener('click', () => {
+                if (this.state.ncdrRainMaxAggregationOrder === 'maxfirst') return;
+                this.state.ncdrRainMaxAggregationOrder = 'maxfirst';
+                this.updateNCDRMaxOrderSwitchUI();
+                this.updateData();
+            });
+        }
+
+        if (this.ui.ncdrMaxOrderSumBtn) {
+            this.ui.ncdrMaxOrderSumBtn.addEventListener('click', () => {
+                if (this.state.ncdrRainMaxAggregationOrder === 'sumfirst') return;
+                this.state.ncdrRainMaxAggregationOrder = 'sumfirst';
+                this.updateNCDRMaxOrderSwitchUI();
+                this.updateData();
+            });
+        }
+
         document.getElementById('aggregation-mode-select').addEventListener('change', e => {
             this.state.aggMode = e.target.value;
             this.state.ncdrRainNoneWindowStart = 0;
@@ -1730,6 +2024,7 @@ const App = {
         }
 
         this.updateNCDRRainNoneNavControls();
+        this.updateNCDRMaxOrderSwitchUI();
 
         this.renderTable();
         this.renderMap();
@@ -1749,12 +2044,107 @@ const App = {
         return { num: rounded, str, valid: true };
     },
 
+    calculateNCDR24hTotalForSeries(locName, element, idx, rawSeries) {
+        if (!rawSeries || !Number.isInteger(idx)) return null;
+
+        const rawTime = element?.Time?.[idx]?.StartTime || element?.Time?.[idx]?.DataTime;
+        const targetTime = rawTime ? new Date(rawTime) : null;
+
+        const stationsAvail = (this.state.obsRain24hByTown.get(locName)?.length ?? 0) > 0;
+        let acHours = 0;
+        if (stationsAvail) {
+            const refTime = this.state.obsRainRequestedTime;
+            if (targetTime instanceof Date && Number.isFinite(targetTime.getTime()) &&
+                refTime instanceof Date && Number.isFinite(refTime.getTime())) {
+                const hourDiff = Math.round((targetTime.getTime() - refTime.getTime()) / 3600000);
+                acHours = Math.max(0, Math.min(24, 23 - hourDiff));
+            } else {
+                acHours = 22;
+            }
+        }
+
+        const obsAccum = acHours > 0 ? this.getObservedRainAccumByHour(locName, targetTime, 22) : null;
+        const fcstAccum = acHours === 0
+            ? this.getSeriesAccumFor24hMode(rawSeries, idx, 24)
+            : this.getSeriesAccumFor24hMode(rawSeries, idx);
+
+        if (!Number.isFinite(obsAccum) && !Number.isFinite(fcstAccum)) return null;
+
+        return (Number.isFinite(obsAccum) ? obsAccum : 0) + (Number.isFinite(fcstAccum) ? fcstAccum : 0);
+    },
+
+    calculateNCDRMaxSumFirstValue(locName, element, indices) {
+        const memberRawList = this.state.ncdrRainMaxMemberRawByTown?.[locName];
+        const memberCumList = this.state.ncdrRainMaxMemberCumByTown?.[locName];
+        if (!Array.isArray(memberRawList) || memberRawList.length === 0 || !Array.isArray(indices) || indices.length === 0) {
+            return { num: 0, str: "-", valid: false };
+        }
+
+        let maxVal = null;
+
+        for (let m = 0; m < memberRawList.length; m++) {
+            const rawSeries = memberRawList[m];
+            const cumSeries = Array.isArray(memberCumList?.[m]) ? memberCumList[m] : null;
+            let value = null;
+
+            if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX) {
+                const idx = indices[0];
+                if (
+                    cumSeries
+                    && Number.isInteger(idx)
+                    && Number.isFinite(cumSeries[idx + 1])
+                    && Number.isFinite(cumSeries[idx - 2])
+                ) {
+                    value = Math.max(cumSeries[idx + 1] - cumSeries[idx - 2], 0);
+                } else {
+                    let sumRaw = 0;
+                    let found = false;
+                    for (let i = Math.max(0, idx - 2); i <= idx; i++) {
+                        const raw = rawSeries?.[i];
+                        if (Number.isFinite(raw)) {
+                            sumRaw += raw;
+                            found = true;
+                        }
+                    }
+                    if (found) value = sumRaw;
+                }
+            } else if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
+                value = this.calculateNCDR24hTotalForSeries(locName, element, indices[0], rawSeries);
+            } else if (
+                (this.state.aggMode === CONFIG.AGGREGATION.HOURS_3 || this.state.aggMode === CONFIG.AGGREGATION.HOURS_6)
+                && indices.length > 1
+            ) {
+                let sumRaw = 0;
+                let found = false;
+                for (const idx of indices) {
+                    const raw = rawSeries?.[idx];
+                    if (Number.isFinite(raw)) {
+                        sumRaw += raw;
+                        found = true;
+                    }
+                }
+                if (found) value = sumRaw;
+            }
+
+            if (Number.isFinite(value) && (maxVal == null || value > maxVal)) {
+                maxVal = value;
+            }
+        }
+
+        if (!Number.isFinite(maxVal)) return { num: 0, str: "-", valid: false };
+        return this.formatNCDRRainValue(maxVal);
+    },
+
     calculateDisplayValue(locName, element, indices) {
         if (this.state.currentVar === "NCDR系集降雨預報") {
             const rawSeries = this.state.ncdrRainRawSeries.get(locName);
             const cumSeries = this.state.ncdrRainCumSeries.get(locName);
             if (!rawSeries || !Array.isArray(indices) || indices.length === 0) {
                 return { num: 0, str: "-", valid: false };
+            }
+
+            if (this.isNCDRSumFirstModeEnabled()) {
+                return this.calculateNCDRMaxSumFirstValue(locName, element, indices);
             }
 
             if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_3H_MAX) {
@@ -1784,36 +2174,8 @@ const App = {
 
             if (this.state.aggMode === CONFIG.AGGREGATION.HOURLY_DAY_24H_MAX) {
                 const idx = indices[0];
-                const rawTime = element?.Time?.[idx]?.StartTime || element?.Time?.[idx]?.DataTime;
-                const targetTime = rawTime ? new Date(rawTime) : null;
-
-                // Compute how many obs hours are available for this target time
-                const stationsAvail = (this.state.obsRain24hByTown.get(locName)?.length ?? 0) > 0;
-                let acHours = 0;
-                if (stationsAvail) {
-                    const refTime = this.state.obsRainRequestedTime;
-                    if (targetTime instanceof Date && Number.isFinite(targetTime.getTime()) &&
-                        refTime instanceof Date && Number.isFinite(refTime.getTime())) {
-                        const hourDiff = Math.round((targetTime.getTime() - refTime.getTime()) / 3600000);
-                        acHours = Math.max(0, Math.min(24, 23 - hourDiff));
-                    } else {
-                        acHours = 22; // fallback
-                    }
-                }
-
-                // When obs window covers 0 hours (out of range or no stations),
-                // use the full 24-hour forecast window instead of defaulting to zero.
-                // Only substitute with observed accumulation when obs data is available.
-                const obsAccum = acHours > 0 ? this.getObservedRainAccumByHour(locName, targetTime, 22) : null;
-                const fcstAccum = acHours === 0
-                    ? this.getNCDRForecastAccumFor24hMode(locName, idx, 24)
-                    : this.getNCDRForecastAccumFor24hMode(locName, idx);
-
-                if (!Number.isFinite(obsAccum) && !Number.isFinite(fcstAccum)) {
-                    return { num: 0, str: "-", valid: false };
-                }
-
-                const total24h = (Number.isFinite(obsAccum) ? obsAccum : 0) + (Number.isFinite(fcstAccum) ? fcstAccum : 0);
+                const total24h = this.calculateNCDR24hTotalForSeries(locName, element, idx, rawSeries);
+                if (!Number.isFinite(total24h)) return { num: 0, str: "-", valid: false };
                 return this.formatNCDRRainValue(total24h);
             }
 
@@ -2001,13 +2363,45 @@ const App = {
             th.style.fontSize = fontSize;
         });
 
+        const shouldUseCompactRainFont = this.shouldUseCompactRainTableFont();
+        let dataFontSize = fontSize;
+        if (shouldUseCompactRainFont) {
+            if (itemCount >= 24) dataFontSize = '1.3rem';
+            else if (itemCount >= 8) dataFontSize = '1.7rem';
+            else if (itemCount >= 4) dataFontSize = '1.9rem';
+            else dataFontSize = '2.0rem';
+        }
+
         const allRows = this.ui.tableBody.querySelectorAll('tr');
         allRows.forEach(row => {
             const dataCells = row.querySelectorAll('td:not(:first-child)');
             dataCells.forEach(td => {
-                td.style.fontSize = fontSize;
+                td.style.fontSize = dataFontSize;
             });
         });
+    },
+
+    shouldUseCompactRainTableFont() {
+        const rainVars = ["定量降水預報", "NCDR系集降雨預報"];
+        if (!rainVars.includes(this.state.currentVar)) return false;
+
+        const rows = this.ui.tableBody?.querySelectorAll('tr');
+        if (!rows || rows.length === 0) return false;
+
+        for (const row of rows) {
+            const cells = row.querySelectorAll('td:not(:first-child)');
+            for (const cell of cells) {
+                const text = (cell.textContent || '').trim();
+                if (!text || text === '-' || text === 'N/A') continue;
+
+                const numeric = Number(text.replace(/[^\d.-]/g, ''));
+                if (Number.isFinite(numeric) && Math.abs(numeric) >= 1000) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     },
 
     renderMap() {
