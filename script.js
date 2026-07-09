@@ -714,7 +714,7 @@ const App = {
         ncdrObsRainLoaded: false,
         ncdrRainBaseTime: null,
         ncdrRainEnsemble: 'G01',
-        ncdrRainMaxAggregationOrder: 'maxfirst',
+        ncdrRainMaxAggregationOrder: 'sumfirst',
         ncdrRainRawSeries: new Map(),
         ncdrRainCumSeries: new Map(),
         ncdrRainMaxMemberRawByTown: {},
